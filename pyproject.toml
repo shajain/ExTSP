@@ -1,0 +1,25 @@
+[project]
+name = "ExTSP"
+version = "0.1.0"
+description = "Develop pathogenicity score function that incorporates expression data."
+authors = [
+    {name = "Shantanu Jain",email = "shajain8@gmail.com"}
+]
+license = {text = "{text = \"MIT\"}"}
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "scipy"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.setuptools.packages.find]
+where = ["src"]

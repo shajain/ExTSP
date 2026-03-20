@@ -1,0 +1,28 @@
+Metadata-Version: 2.4
+Name: ExTSP
+Version: 0.1.0
+Summary: Develop pathogenicity score function that incorporates expression data
+Author-email: Your Name <shajain8@gmail.com>
+License: MIT
+Project-URL: Homepage, https://github.com/yourusername/ExTSP
+Project-URL: Documentation, https://github.com/yourusername/ExTSP#readme
+Project-URL: Repository, https://github.com/yourusername/ExTSP.git
+Project-URL: Issues, https://github.com/yourusername/ExTSP/issues
+Keywords: TSP,traveling-salesman,optimization
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.20.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=3.0; extra == "dev"
+Requires-Dist: black>=22.0; extra == "dev"
+Requires-Dist: flake8>=4.0; extra == "dev"
+Requires-Dist: mypy>=0.950; extra == "dev"
