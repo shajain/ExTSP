@@ -9,11 +9,73 @@ from ExTSP.commonFunctions import summaryStats, filterPathOrCases, clinSig_bool
 from ExTSP.config import DATA_DIR, RESULTS_DIR, FIGURES_DIR, NUM_CPU, NBOOT
 from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
 
-PERFORM_STATISTICAL_TESTS = True
+PERFORM_STATISTICAL_TESTS = False
 
 
+def ComputeTissueEnrichment(df, score_col="exTSP"):
+    """
+    Tissue enrichment using exTSP (not ptse).
 
-def ComputeTissueEnrichment(df):
+    Each row is variant–transcript–tissue with an exTSP score.
+
+    1. For each (Variant, Tissue), take max exTSP across transcripts.
+    2. For each Variant, normalize those max scores across tissues so they sum to 1.
+    3. For each Gene, average the normalized vector over all variants in that gene.
+    4. Average those gene-level vectors across genes (equal weight per gene).
+
+    Returns a DataFrame indexed by Tissue with columns ``count``, ``proportion``,
+    ``proportion_og`` (``proportion`` and ``proportion_og`` are the same and sum to 1).
+    """
+    Tissues = pd.Index(df["Tissue"].unique()).sort_values()
+    print(df.shape)
+
+    if score_col not in df.columns:
+        raise KeyError(f"Column {score_col!r} not in dataframe")
+
+    # 1) max score per (Variant, Tissue)
+    vt_max = df.groupby(["Variant", "Tissue"], as_index=False)[score_col].max()
+
+    pivot = vt_max.pivot_table(index="Variant", columns="Tissue", values=score_col)
+    pivot = pivot.reindex(columns=Tissues, fill_value=0)
+
+    # 2) normalize each variant row to sum to 1 across tissues
+    row_sum = pivot.sum(axis=1)
+    normalized = pivot.div(row_sum.where(row_sum > 0), axis=0)
+    zero_sum = row_sum == 0
+    if zero_sum.any():
+        normalized.loc[zero_sum, :] = 1.0 / len(Tissues)
+
+    # var_gene = df[["Variant", "Gene"]].drop_duplicates(subset=["Variant"])
+    # if var_gene["Variant"].duplicated().any():
+    #     var_gene = var_gene.drop_duplicates(subset=["Variant"], keep="first")
+
+    # long = normalized.reset_index().melt(
+    #     id_vars="Variant", var_name="Tissue", value_name="norm"
+    # )
+    # long = long.merge(var_gene, on="Variant", how="left")
+
+    # # 3) mean over variants within each gene
+    # gene_tissue = long.groupby(["Gene", "Tissue"], as_index=False)["norm"].mean()
+
+    # # 4) mean over genes
+    # final = gene_tissue.groupby("Tissue")["norm"].mean()
+    # final = final.reindex(Tissues, fill_value=0)
+
+    final = normalized.mean(axis=0)
+
+    s = final.sum()
+    proportion = final / s if s > 0 else pd.Series(1.0 / len(Tissues), index=Tissues)
+
+    df_tissue = pd.DataFrame(
+        {
+            "proportion": proportion,
+            "proportion_og": proportion,
+        },
+        index=proportion.index,
+    )
+    return df_tissue
+
+def ComputeTissueEnrichment_backup(df):
     Tissues = df['Tissue'].unique()
     #df.Transcript_id.nunique()
     print(df.shape)
@@ -45,7 +107,7 @@ def ComputeTissueEnrichment(df):
     df_tissue["proportion_og"]= df_tissue['count'] / df_tissue['count'].sum()
     return df_tissue
 
-def ComputeTissueEnrichment(df):
+def ComputeTissueEnrichment_probably_same_as_backup(df):
     Tissues = df['Tissue'].unique()
     #df.Transcript_id.nunique()
     print(df.shape)
@@ -196,8 +258,8 @@ if __name__ == "__main__":
     print("Number of bootstraps set to:", NBOOT)
     print("Number of CPUs set to:", NUM_CPU)
         
-    #diseases = ["CM", "PKD", "PH", "PCD", "ASD"]
-    diseases = ["PKD", "PH", "PCD", "ASD"]
+    diseases = ["CM", "PKD", "PH", "PCD", "ASD"]
+    #diseases = ["PKD", "PH", "PCD", "ASD"]
     #diseases = ["ASD"]
     files = {d: {"VIT": f'{DATA_DIR}/TissueEnrichment/{d}_VITs.tsv', 
                  "targetVars": f'{DATA_DIR}/TissueEnrichment/{d}_targetVars.tsv', 

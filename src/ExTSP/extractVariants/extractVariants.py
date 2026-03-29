@@ -26,7 +26,6 @@ extractedVariantsFile = f'{filtered_folder}/extractedVariants.xlsx'
 
 
 
-
 # def onlyKeepDiseaseMedgenIDs(PIDs):
 #     medgenInCV = set([id.split(':')[1] for idlist in PIDs for id in idlist if id.split(':')[0].lower() == "medgen"])
 #     filtered_medgen_ids = filterMedgenIDs(medgenInCV)

@@ -92,6 +92,7 @@ def meltTissues_df(df, new_col_name):
 
 def main():
     df_raw = pd.read_csv(GTeX_file, sep='\t')
+    df_raw = df_raw[df_raw.iloc[:,0:52].sum(axis=1)>0]
     #Check if file exists
 
     #df_raw.iloc[:,0:52] = np.log2(df_raw.iloc[:,0:52]+1)

@@ -19,4 +19,3 @@ def extractPhenoIDs(pheno_ids_str, Ontologies=Ontologies):
     pheno_ids = [pheno_id for ont in Ontologies for pheno_id in pheno_ids_ont[ont]]
     return pheno_ids, pheno_ids_ont
 
-
