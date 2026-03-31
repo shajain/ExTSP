@@ -1,11 +1,15 @@
-from ExTSP.config import exTSP_file, ExtractedVariants_file, VariantSets
+from ExTSP.config import exTSP_file_gtex, exTSP_file_brainspan_cortical, ExtractedVariants_file, VariantSets
 from ExTSP.commonFunctions import isCase_ASD, clinSig_bool
 import pandas as pd
 from pathlib import Path
 
-def get_tripletSets_with_exTSP(disease, type="all"):
+def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=None):
     # type = "all", "P", "PLP", "B", "BLB", "VUS", "case", "control"
     # disease = "ASD", "CM", "PCD", "PKD", "PH", "nonTarget"
+    if brainspan:
+        exTSP_file = exTSP_file_brainspan_cortical
+    else:
+        exTSP_file = exTSP_file_gtex
     if not Path(exTSP_file).exists():
         exit("exTSP_file does not exist")
     df_extsp = pd.read_csv(exTSP_file, sep='\t')
@@ -38,8 +42,28 @@ def get_tripletSets_with_exTSP(disease, type="all"):
         df_vars = df_vars[["Variant", "Status", "ClinicalSignificance", "In_ClinVar"]]
     df_vars.rename(columns={"ClinicalSignificance": "ClinVar_annotation"}, inplace=True)
     df_extsp = df_extsp.merge(df_vars, on="Variant", how="inner")
-    df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Tissue"])
+    if brainspan:
+        df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Developmental_Period", "Regioncode"])
+    else:
+        df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Tissue"])
+    if numVars is not None:
+        df_extsp = subsample_tripletSets(df_extsp, numVars)
     return df_extsp
+
+
+def subsample_tripletSets(df_extsp, numVars):
+    df_vars = df_extsp[["Variant"]].drop_duplicates().sample(n=numVars, random_state=42, replace=True)
+    df_extsp_subsampled = df_vars.merge(df_extsp, on="Variant", how="inner")
+    return df_extsp_subsampled
+
+def variantCountsWithDuplicates(df):
+    vCounts1 = df.Variant.value_counts()
+    if "Tissue" in df.columns:
+        vCounts2 = df[["Variant", "Transcript_id", "Tissue"]].drop_duplicates().Variant.value_counts()
+    else:
+        vCounts2 = df[["Variant", "Transcript_id", "Developmental_Period", "Regioncode"]].drop_duplicates().Variant.value_counts()
+    vCounts3 = vCounts1/vCounts2
+    return vCounts3.sum()
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import zscore
 from scipy.stats import norm
-from ExTSP.config import GTeX_file, BrainSpan_expression_file, PTSE_file_gtex, PTSE_file_brainspan
+from ExTSP.config import GTeX_file, BrainSpan_expression_file_cortical, PTSE_file_gtex, PTSE_file_brainspan_cortical
 from pathlib import Path
 
 
@@ -127,7 +127,7 @@ def sigTissueCounts(df):
     print("number of transcripts in GTEx where at aleast one tissue has significant expression:", (nTissuesSig>0).sum())
     print(nTissuesSig.value_counts())
 
-def meltTissues_df(df, new_col_name, idx, idx_meta):
+def meltTissues_df(df, var_name, value_name, idx, idx_meta):
      # First 52 columns are tissues; remaining columns are variant/isoform/gene/etc.
     tissue_cols = df.columns[idx]
     meta_cols = df.columns[idx_meta]
@@ -136,12 +136,12 @@ def meltTissues_df(df, new_col_name, idx, idx_meta):
     df_long = df.melt(
         id_vars=meta_cols,
         value_vars=tissue_cols,
-        var_name="tissue",
-        value_name=new_col_name
+        var_name=var_name,
+        value_name=value_name
     )
     return df_long
 
-def main(df_expr, idx, idx_meta):
+def main(df_expr, var_name, idx, idx_meta):
     all_zero_rows = df_expr.iloc[:,idx].sum(axis=1)==0
     idx_zero = df_expr.iloc[:,idx] == 0
     print(f"number of rows with all zeros: {all_zero_rows.sum()}")
@@ -175,35 +175,35 @@ def main(df_expr, idx, idx_meta):
     normalizedLR[idx_zero] = 0.0
     df_normalizedLR = df_expr.copy()
     df_normalizedLR.iloc[:,idx] = normalizedLR 
-    df_raw_melted = meltTissues_df(df_expr, "meanTPM", idx, idx_meta)
-    df_ptse_melted = meltTissues_df(df_ptse, "ptse", idx, idx_meta)
-    df_scaledLR_melted = meltTissues_df(df_normalizedLR, "normalizedLR", idx, idx_meta)
+    df_raw_melted = meltTissues_df(df_expr, var_name, "meanTPM", idx, idx_meta)
+    df_ptse_melted = meltTissues_df(df_ptse, var_name, "ptse", idx, idx_meta)
+    df_scaledLR_melted = meltTissues_df(df_normalizedLR, var_name, "normalizedLR", idx, idx_meta)
     df_melted = pd.concat([df_raw_melted, df_ptse_melted, df_scaledLR_melted], axis=1)
     df_melted = df_melted.loc[:, ~df_melted.columns.duplicated()]
     return df_melted
 
 if __name__ == "__main__":
-    #if Path(PTSE_file_gtex).exists():
-    if False:
+    if Path(PTSE_file_gtex).exists():
+    #if False:
         print(f"PTSE scores are already exist in {PTSE_file_gtex}")
     else:
         df_expr = pd.read_csv(GTeX_file, sep='\t')
         df_expr = df_expr.fillna(0.0)
         idx = slice(0, 52)
         idx_meta = slice(52, df_expr.shape[1])
-        df_melted = main(df_expr, idx=idx, idx_meta=idx_meta)
+        df_melted = main(df_expr, "tissue", idx=idx, idx_meta=idx_meta)
         df_melted.to_csv(PTSE_file_gtex, index=False, sep='\t')
         print(f"PTSE scores saved in {PTSE_file_gtex}")
-    if Path(PTSE_file_brainspan).exists():
-        print(f"PTSE scores are already exist in {PTSE_file_brainspan}")
+    if Path(PTSE_file_brainspan_cortical).exists():
+        print(f"PTSE scores are already exist in {PTSE_file_brainspan_cortical}")
     else:
-        df_expr = pd.read_csv(BrainSpan_expression_file, sep='\t')
+        df_expr = pd.read_csv(BrainSpan_expression_file_cortical, sep='\t')
         df_expr = df_expr.fillna(0.0)
         idx = slice(3,15)
         idx_meta = list(range(0, 3)) + list(range(15, df_expr.shape[1]))
-        df_melted = main(df_expr, idx=idx, idx_meta=idx_meta)
-        df_melted.to_csv(PTSE_file_brainspan, index=False, sep='\t')
-        print(f"PTSE scores saved in {PTSE_file_brainspan}")
+        df_melted = main(df_expr, "Developmental_Period", idx=idx, idx_meta=idx_meta)
+        df_melted.to_csv(PTSE_file_brainspan_cortical, index=False, sep='\t')
+        print(f"PTSE scores saved in {PTSE_file_brainspan_cortical}")
     print("PTSE scores computation completed")
    
     
