@@ -12,6 +12,19 @@ from matplotlib.colors import to_rgba
 SUPPORTING_EVIDENCE_THRESHOLD = 0.0999
 
 
+# def exTSP_selected_isoform(df, Tissue=None):
+#     if Tissue is not None:
+#         df = df[df['Tissue'] == Tissue]
+#     for _, group_df in df.groupby('Gene'):
+#         df_IT = group_df.groupby(["Transcript_id", "Tissue"])["exTSP"].mean()
+#         df_isoform_sorted = df_IT.groupby("Transcript_id")["exTSP"].max().sort_values(by='exTSP', ascending=False).reset_index()[["Transcript_id"]]
+#         Variants = group_df["Variant"].unique().tolist()
+#         rank = 1
+#         while len(Variants) > 0:
+
+#     return df_isoform
+
+
 def isoformSelectionGene(df, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
     df_Path = filterPathOrCases(df, onlyP=False)
     Tissues = df['Tissue'].unique()

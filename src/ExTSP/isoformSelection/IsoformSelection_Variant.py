@@ -4,11 +4,25 @@ import pandas as pd
 import pdb
 import seaborn as sns
 import argparse
-from src.IsoformSelection_Gene import SUPPORTING_EVIDENCE_THRESHOLD
-from src.ExTSP.commonFunctions import filterPathOrCases, summaryStats
+from ExTSP.isoformSelection.IsoformSelection_Gene import SUPPORTING_EVIDENCE_THRESHOLD
+from ExTSP.commonFunctions import filterPathOrCases, summaryStats
 import seaborn as sns
 
 SUPPORTING_EVIDENCE_THRESHOLD = 0.0999
+
+
+def exTSP_selected_isoform_Tissue(df, Tissue):
+    df = df[df['Tissue'] == Tissue]
+    return exTSP_selected_isoform(df)
+
+def exTSP_selected_isoform(df):
+    df_exTSP_selected = pd.DataFrame()
+    for _, group_df in df.groupby('Variant'):
+        #get the row with maximum exTSP
+        exTSP_selected_transcript = group_df.loc[group_df["exTSP"].idxmax()]["Transcript_id"]
+        group_df_exTSP_selected = group_df[group_df["Transcript_id"] == exTSP_selected_transcript]
+        df_exTSP_selected = pd.concat([df_exTSP_selected, group_df_exTSP_selected])
+    return df_exTSP_selected.reset_index(drop=True)
 
 def isoformSelectionVariant(df, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
     df_Path = filterPathOrCases(df)
