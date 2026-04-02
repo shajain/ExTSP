@@ -63,7 +63,7 @@ def variantCountsWithDuplicates(df):
     else:
         vCounts2 = df[["Variant", "Transcript_id", "Developmental_Period", "Regioncode"]].drop_duplicates().Variant.value_counts()
     vCounts3 = vCounts1/vCounts2
-    return vCounts3.sum()
+    return vCounts3.sum(), vCounts3
 
 
 if __name__ == "__main__":
