@@ -15,11 +15,11 @@ def exTSP_selected_isoform_Tissue(df, Tissue):
     df = df[df['Tissue'] == Tissue]
     return exTSP_selected_isoform(df)
 
-def exTSP_selected_isoform(df):
+def exTSP_selected_isoform(df, selectionColumn="exTSP"):
     df_exTSP_selected = pd.DataFrame()
     for _, group_df in df.groupby('Variant'):
         #get the row with maximum exTSP
-        exTSP_selected_transcript = group_df.loc[group_df["exTSP"].idxmax()]["Transcript_id"]
+        exTSP_selected_transcript = group_df.loc[group_df[selectionColumn].idxmax()]["Transcript_id"]
         group_df_exTSP_selected = group_df[group_df["Transcript_id"] == exTSP_selected_transcript]
         df_exTSP_selected = pd.concat([df_exTSP_selected, group_df_exTSP_selected])
     return df_exTSP_selected.reset_index(drop=True)

@@ -52,7 +52,13 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
 
 
 def subsample_tripletSets(df_extsp, numVars):
-    df_vars = df_extsp[["Variant"]].drop_duplicates().sample(n=numVars, random_state=42, replace=True)
+    var_unique = df_extsp[["Variant"]].drop_duplicates()
+    countRatio = int(numVars/len(var_unique))
+    if countRatio > 1:
+        #df_vars = pd.DataFrame(var_unique*countRatio, columns=["Variant"])
+        df_vars = pd.DataFrame(var_unique.Variant.unique().tolist()*countRatio, columns=["Variant"])
+    df_vars2 = var_unique.sample(n=numVars%len(var_unique), replace=False)
+    df_vars = pd.concat([df_vars, df_vars2], ignore_index=True)
     df_extsp_subsampled = df_vars.merge(df_extsp, on="Variant", how="inner")
     return df_extsp_subsampled
 
