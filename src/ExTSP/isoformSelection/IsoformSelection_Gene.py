@@ -4,7 +4,7 @@ import pandas as pd
 import pdb
 import seaborn as sns
 import argparse
-from src.ExTSP.commonFunctions import filterPathOrCases, summaryStats, getSingleDiseaseVariants
+from ExTSP.commonFunctions import filterPathOrCases, summaryStats, getSingleDiseaseVariants
 import seaborn as sns
 from matplotlib.colors import to_rgba
 

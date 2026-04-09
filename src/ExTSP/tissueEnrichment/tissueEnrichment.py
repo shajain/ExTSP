@@ -11,8 +11,12 @@ from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
 
 PERFORM_STATISTICAL_TESTS = False
 
+def select_disease_tissue(df):
+    tissue_probabilities = ComputeTissueEnrichment(df)
+    selected_tissue = tissue_probabilities[["proportion_og"]].idxmax().item()
+    return selected_tissue
 
-def ComputeTissueEnrichment(df, score_col="exTSP"):
+def ComputeTissueEnrichment_normalize_max_exTSP(df, score_col="exTSP"):
     """
     Tissue enrichment using exTSP (not ptse).
 
@@ -75,12 +79,12 @@ def ComputeTissueEnrichment(df, score_col="exTSP"):
     )
     return df_tissue
 
-def ComputeTissueEnrichment_backup(df):
+def ComputeTissueEnrichment(df):
     Tissues = df['Tissue'].unique()
     #df.Transcript_id.nunique()
-    print(df.shape)
+    #print(df.shape)
     # Given each Variant-Transcript pair, get the tissue with the maximum ExTSP value. 
-    max_ix = df.groupby(['Variant', 'Transcript_id'])['ptse'].idxmax()
+    max_ix = df.groupby(['Variant', 'Transcript_id'])['exTSP'].idxmax()
     df_max_Tissue = df.loc[max_ix]
     DF_tissue  = []
     i = 0
