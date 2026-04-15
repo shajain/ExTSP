@@ -1,4 +1,4 @@
-from ExTSP.config import exTSP_file_gtex, exTSP_file_brainspan_cortical, ExtractedVariants_file, VariantSets
+from ExTSP.config import exTSP_file_gtex, exTSP_file_brainspan_cortical, ExtractedVariants_file, VariantSets, OLD_DATA_DIR
 from ExTSP.commonFunctions import isCase_ASD, clinSig_bool
 import pandas as pd
 from pathlib import Path
@@ -49,6 +49,57 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
     if numVars is not None:
         df_extsp = sample_tripletSets(df_extsp, numVars)
     return df_extsp
+
+
+def get_tripletSets_with_exTSP_old(disease, type="all", brainspan=False,  numVars=None):
+    # type = "all", "P", "PLP", "B", "BLB", "VUS", "case", "control"
+    # disease = "ASD", "CM", "PCD", "PKD", "PH", "nonTarget"
+    diseases = ["CM", "PCD", "ASD"]
+    nonTarget = False
+    if disease not in diseases:
+        disease = disease.split("_")[1]
+        nonTarget = True
+    exTSP_file_old = OLD_DATA_DIR / f"extsp_{disease}.tsv"
+    exTSP_file_disease = OLD_DATA_DIR / f"classification/exTSP_file_expression_ensemble_annotation_{disease}.tsv"
+    df_extsp_disease = pd.read_csv(exTSP_file_disease, sep='\t')
+    if nonTarget:
+        exTSP_file_non_disease = [OLD_DATA_DIR / f"classification/exTSP_file_expression_ensemble_annotation_{d}.tsv" for d in diseases if d != disease]
+        df_extsp_non_disease = pd.DataFrame()
+        for exTSP_file in exTSP_file_non_disease:
+            if not Path(exTSP_file).exists():
+                exit(f"exTSP_file {exTSP_file} does not exist")
+            df_extsp_non_disease = pd.concat([df_extsp_non_disease, pd.read_csv(exTSP_file, sep='\t')])
+        target_genes = df_extsp_disease.Gene.unique()
+        df_extsp_non_disease = df_extsp_non_disease[~df_extsp_non_disease.Gene.isin(target_genes)]
+        df_extsp = df_extsp_non_disease
+    else:
+        df_extsp = df_extsp_disease
+    if type in ["P", "PLP", "B", "BLB", "VUS"] and disease != "ASD":
+        P_idx, PLP_idx, VUS_idx, BLB_idx, B_idx = clinSig_bool(df_extsp["ClinVar_annotation"])
+        if type == "P":
+            df_extsp = df_extsp[P_idx]
+        elif type == "PLP":   
+            df_extsp = df_extsp[PLP_idx]
+        elif type == "B":
+            df_extsp = df_extsp[B_idx]
+        elif type == "BLB":   
+            df_extsp = df_extsp[BLB_idx]
+        elif type == "VUS":
+            df_extsp = df_extsp[VUS_idx]  
+        else:
+            exit("Invalid type")
+    elif type in ["case", "control"] and disease == "ASD":
+        iscase = isCase_ASD(df_extsp["Status"])
+        if type == "case":
+            df_extsp = df_extsp[iscase]
+        elif type == "control":
+            df_extsp = df_extsp[~iscase]
+        else:
+            exit("Invalid type")
+    if numVars is not None:
+        df_extsp = sample_tripletSets(df_extsp, numVars)
+    return df_extsp
+
 
 
 def sample_tripletSets(df_extsp, numVars):

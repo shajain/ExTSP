@@ -30,7 +30,7 @@ from sklearn.metrics import roc_auc_score
 
 #from ExTSP.classification.clinvar_splits import split_four_tables
 #from ExTSP.classification.triplet_data import load_triplet_dataframes
-from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP, variantCountsWithDuplicates, sample_tripletSets
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP, variantCountsWithDuplicates, sample_tripletSets, get_tripletSets_with_exTSP_old
 from ExTSP.isoformSelection.IsoformSelection_Variant import exTSP_selected_isoform
 from ExTSP.config import VariantSets
 
@@ -302,7 +302,7 @@ def bootstrap_auc_for_disease(
     n_bootstrap: int = 100,
     prop_gene_draws: float | None = None,
     random_state: int = 42,
-) -> tuple[list[BootstrapAUCResult], dict[str, float]]:
+    use_old_data: bool = False) -> tuple[list[BootstrapAUCResult], dict[str, float]]:
     """
     Same as :func:`bootstrap_auc`, but builds ``df_target`` / ``df_nontarget`` from
     ``disease`` and ``setting`` via :func:`~ExTSP.classification.triplet_data.load_triplet_dataframes`
@@ -330,17 +330,20 @@ def bootstrap_auc_for_disease(
     elif setting in [3, 4, 5]:
         typeP = "PLP"
         typeB = "BLB"
-    df_target_p = get_tripletSets_with_exTSP(disease, type=typeP)
+    load_triplets = get_tripletSets_with_exTSP_old if use_old_data else get_tripletSets_with_exTSP
+    df_target_p = load_triplets(disease, type=typeP)
     df_target_b = df_target_p.head(0).copy()
     df_nontarget_p = df_target_p.head(0).copy()
     df_nontarget_b = df_target_p.head(0).copy()
+    nonTarget_str = f'nonTarget' if not use_old_data else f'nonTarget_{disease}'
+    
     if setting != 3:
-        df_target_b = get_tripletSets_with_exTSP(disease, type=typeB)
+        df_target_b = load_triplets(disease, type=typeB)
         if setting in [2,5]:
-            df_nontarget_p = get_tripletSets_with_exTSP('nonTarget', type=typeP)
-            df_nontarget_b = get_tripletSets_with_exTSP('nonTarget', type=typeB)
+            df_nontarget_p = load_triplets(nonTarget_str, type=typeP)
+            df_nontarget_b = load_triplets(nonTarget_str, type=typeB)
     else: 
-        df_nontarget_p = get_tripletSets_with_exTSP('nonTarget', type=typeP)
+        df_nontarget_p = load_triplets(nonTarget_str, type=typeP)
     df_target_p = filter_columns(df_target_p)
     df_target_b = filter_columns(df_target_b)
     df_nontarget_p = filter_columns(df_nontarget_p)
