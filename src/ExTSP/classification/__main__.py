@@ -266,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if generate_plot:
         fig, _ = plot_auc_comparison(plot_results)
-        pdf_path = "auc_comparison.pdf"
+        pdf_path = "auc_comparison--old-data-new-nontarget.pdf"
         fig.savefig(pdf_path, bbox_inches='tight')
         plt.close(fig)
         print(f"Saved AUC comparison plot to {pdf_path}")
