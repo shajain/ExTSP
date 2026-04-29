@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
 
 #from ExTSP.classification.clinvar_splits import split_four_tables
 #from ExTSP.classification.triplet_data import load_triplet_dataframes
@@ -44,6 +45,8 @@ class BootstrapAUCResult:
 
     ``n_oob_variants`` counts distinct variants in the OOB gene slice across pathogenic
     target, benign target, and non-target arms when present.
+
+    Split-evaluation fields are nan unless ``--split-evaluation`` is passed.
     """
     auc_isopath: float
     auc_extsp: float
@@ -56,6 +59,10 @@ class BootstrapAUCResult:
     n_oob_variants_neg: int
     n_oob_genes_pos: int
     n_oob_genes_neg: int
+    auc_isopath_pathneg: float = float("nan")
+    auc_extsp_pathneg: float = float("nan")
+    auc_isopath_benneg: float = float("nan")
+    auc_extsp_benneg: float = float("nan")
     
 
 
@@ -114,46 +121,31 @@ def build_positive_negative_triplets(
     oob_genes: np.ndarray,
     gene_col: str,
     *,
-    balanced_negative: bool = False,
     tissue_col: str = C.TISSUE,
     isoform_col: str = C.TRANSCRIPT_ID,
     variant_col: str = C.VARIANT,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Positive: pathogenic target rows with selected isoform at ``best_tissue``.
 
-    Negative (depends on which arms are non-empty after ``split_four_tables``):
+    Returns ``(pos, neg_path, neg_ben)`` — the caller combines them and applies
+    any balancing so that split-evaluation callers can evaluate each set separately.
 
-    * Benign target / benign non-target: selected isoform, **all tissues** (empty in
-      setting 3, which has **no** benign variants).
-    * Pathogenic non-target: selected isoform, **all tissues**.
-    * Pathogenic target: selected isoform, **all tissues other than** ``best_tissue``.
-
-    Setting 3: only PLP pathogenics; negatives are non-target pathogenics (all
-    tissues) plus pathogenic target at non-selected tissues—no B/LB rows.
+    neg_path: pathogenic target at non-best tissues + pathogenic non-target (all tissues).
+    neg_ben: benign target + benign non-target (all tissues); empty in setting 3.
     """
-    # pt_oob, bt_oob, pn_oob, bn_oob = create_oob(path_target, ben_target, path_nontarget, ben_nontarget, oob_genes, gene_col)
-    # iso_pt, iso_bt, iso_pn, iso_bn = select_isoforms(pt_oob, bt_oob, pn_oob, bn_oob)
     iso_pt = exTSP_selected_isoform(filter_by_gene(path_target, oob_genes, gene_col), isoform_col)
     iso_bt = exTSP_selected_isoform(filter_by_gene(ben_target, oob_genes, gene_col), isoform_col)
     iso_pn = exTSP_selected_isoform(filter_by_gene(path_nontarget, oob_genes, gene_col), isoform_col)
     iso_bn = exTSP_selected_isoform(filter_by_gene(ben_nontarget, oob_genes, gene_col), isoform_col)
     pos = iso_pt[iso_pt[tissue_col] == best_tissue]
-    neg_path_target = iso_pt[iso_pt[tissue_col] != best_tissue]
-    neg_ben_target = iso_bt
-    neg_path_nontarget = iso_pn
-    neg_ben_nontarget = iso_bn
-    neg_path = pd.concat([neg_path_target, neg_path_nontarget], axis=0, ignore_index=True)
+    neg_path = pd.concat(
+        [iso_pt[iso_pt[tissue_col] != best_tissue], iso_pn], axis=0, ignore_index=True
+    )
     neg_path = neg_path.drop_duplicates(subset=[variant_col, isoform_col, tissue_col])
-    neg_ben = pd.concat([neg_ben_target, neg_ben_nontarget], axis=0, ignore_index=True)
+    neg_ben = pd.concat([iso_bt, iso_bn], axis=0, ignore_index=True)
     neg_ben = neg_ben.drop_duplicates(subset=[variant_col, isoform_col, tissue_col])
-    if balanced_negative and not neg_ben.empty:
-        n_path_variants = neg_path[variant_col].nunique()
-        n_ben_variants = neg_ben[variant_col].nunique()
-        if n_path_variants != n_ben_variants:
-            neg_ben = sample_tripletSets(neg_ben, n_path_variants)
-    neg = pd.concat([neg_path, neg_ben], axis=0, ignore_index=True)
-    return pos, neg
+    return pos, neg_path, neg_ben
 
 
 def _auc_binary(pos: pd.DataFrame, neg: pd.DataFrame, score_col: str) -> float:
@@ -201,17 +193,27 @@ def run_one_bootstrap(
     ben_nontarget: pd.DataFrame,
     *,
     balanced_negative: bool = False,
+    split_evaluation: bool = False,
     prop_gene_draws: float | None = None,
     rng: np.random.Generator | None = None,
+    filter_min_pathogenic: bool = False,
     gene_col: str = C.GENE,
     variant_col: str = C.VARIANT,
     tissue_col: str = C.TISSUE,
     isoform_col: str = C.TRANSCRIPT_ID,
     isopath_col: str = C.ISO_PATH,
     extsp_col: str = C.EXTSP,
-    
+
 ) -> BootstrapAUCResult:
-    
+
+    if filter_min_pathogenic:
+        counts = (
+            path_target[path_target["ClinVar_annotation"].str.contains("athogenic", na=False, case=False)]
+            .groupby(gene_col)[variant_col].nunique()
+        )
+        valid_genes = counts[counts >= 3].index
+        path_target = path_target[path_target[gene_col].isin(valid_genes)]
+
     unique_genes_all = _genes_unique_union([path_target, ben_target, path_nontarget, ben_nontarget], gene_col)
     unique_genes_pos = _genes_unique_union([path_target], gene_col)
     draw, oob_genes = _bootstrap_draw_and_oob(unique_genes_pos, unique_genes_all, rng, prop_gene_draws=prop_gene_draws)
@@ -219,11 +221,27 @@ def run_one_bootstrap(
     pt_boot = path_target[path_target[gene_col].isin(draw)]
     best_tissue = select_disease_tissue(pt_boot)
 
-    pos, neg = build_positive_negative_triplets(
+    pos, neg_path, neg_ben = build_positive_negative_triplets(
         best_tissue, path_target, ben_target, path_nontarget, ben_nontarget, oob_genes, gene_col,
-        balanced_negative=balanced_negative, tissue_col=tissue_col, isoform_col=isoform_col, variant_col=variant_col)
+        tissue_col=tissue_col, isoform_col=isoform_col, variant_col=variant_col)
 
-    return create_bootstrap_result(pos, neg, best_tissue, variant_col, isopath_col, extsp_col, gene_col)
+    if balanced_negative and not neg_ben.empty:
+        n_path_variants = neg_path[variant_col].nunique()
+        n_ben_variants = neg_ben[variant_col].nunique()
+        if n_path_variants != n_ben_variants:
+            neg_ben = sample_tripletSets(neg_ben, n_path_variants)
+
+    neg = pd.concat([neg_path, neg_ben], axis=0, ignore_index=True)
+
+    result = create_bootstrap_result(pos, neg, best_tissue, variant_col, isopath_col, extsp_col, gene_col)
+
+    if split_evaluation:
+        result.auc_isopath_pathneg = _auc_binary(pos, neg_path, isopath_col)
+        result.auc_extsp_pathneg = _auc_binary(pos, neg_path, extsp_col)
+        result.auc_isopath_benneg = _auc_binary(pos, neg_ben, isopath_col)
+        result.auc_extsp_benneg = _auc_binary(pos, neg_ben, extsp_col)
+
+    return result
 
 
 def bootstrap_auc(
@@ -233,6 +251,8 @@ def bootstrap_auc(
     df_nontarget_b: pd.DataFrame,
     *,
     balanced_negative: bool = False,
+    split_evaluation: bool = False,
+    filter_min_pathogenic: bool = False,
     n_bootstrap: int = 100,
     prop_gene_draws: float | None = None,
     random_state: int = 42,
@@ -257,9 +277,10 @@ def bootstrap_auc(
     n_bootstrap
         Number of bootstrap replicates.
     """
+    print("Running Bootstrapped Classification Experiments")
     rng = np.random.default_rng(random_state)
     results: list[BootstrapAUCResult] = []
-    for _ in range(n_bootstrap):
+    for _ in tqdm(range(n_bootstrap), desc="Bootstrap"):
         results.append(
             run_one_bootstrap(
                 df_target_p,
@@ -269,6 +290,8 @@ def bootstrap_auc(
                 prop_gene_draws=prop_gene_draws,
                 rng=rng,
                 balanced_negative=balanced_negative,
+                split_evaluation=split_evaluation,
+                filter_min_pathogenic=filter_min_pathogenic,
                 gene_col=gene_col,
                 variant_col=variant_col,
                 tissue_col=tissue_col,
@@ -283,10 +306,15 @@ def bootstrap_auc(
         a = a[np.isfinite(a)]
         return float(a.mean()) if a.size else float("nan")
 
-    summary = {
+    summary: dict[str, float] = {
         "mean_auc_isopath": _mean([r.auc_isopath for r in results]),
         "mean_auc_extsp": _mean([r.auc_extsp for r in results]),
     }
+    if split_evaluation:
+        summary["mean_auc_isopath_pathneg"] = _mean([r.auc_isopath_pathneg for r in results])
+        summary["mean_auc_extsp_pathneg"] = _mean([r.auc_extsp_pathneg for r in results])
+        summary["mean_auc_isopath_benneg"] = _mean([r.auc_isopath_benneg for r in results])
+        summary["mean_auc_extsp_benneg"] = _mean([r.auc_extsp_benneg for r in results])
     return results, summary
 
 def filter_columns(df: pd.DataFrame, columns: list[str]=None) -> pd.DataFrame:
@@ -299,10 +327,15 @@ def bootstrap_auc_for_disease(
     disease: str,
     setting: int,
     balanced_negative: bool = False,
+    split_evaluation: bool = False,
+    filter_min_pathogenic: bool = False,
     n_bootstrap: int = 100,
     prop_gene_draws: float | None = None,
     random_state: int = 42,
-    use_old_data: bool = False) -> tuple[list[BootstrapAUCResult], dict[str, float]]:
+    use_old_data: bool = False,
+    use_old_data_overlap: bool = False,
+    non_overlap: bool = False,
+    old_target_only: bool = False) -> tuple[list[BootstrapAUCResult], dict[str, float]]:
     """
     Same as :func:`bootstrap_auc`, but builds ``df_target`` / ``df_nontarget`` from
     ``disease`` and ``setting`` via :func:`~ExTSP.classification.triplet_data.load_triplet_dataframes`
@@ -330,20 +363,71 @@ def bootstrap_auc_for_disease(
     elif setting in [3, 4, 5]:
         typeP = "PLP"
         typeB = "BLB"
-    load_triplets = get_tripletSets_with_exTSP_old if use_old_data else get_tripletSets_with_exTSP
+
+    _OVERLAP_KEYS = [C.GENE, C.VARIANT, C.TRANSCRIPT_ID, C.TISSUE]
+
+    def _overlap(new_df: pd.DataFrame, old_df: pd.DataFrame) -> pd.DataFrame:
+        """Return rows of new_df whose key tuple exists in old_df."""
+        keys = new_df[_OVERLAP_KEYS].drop_duplicates()
+        old_keys = old_df[_OVERLAP_KEYS].drop_duplicates()
+        shared = keys.merge(old_keys, on=_OVERLAP_KEYS, how="inner")
+        return new_df.merge(shared, on=_OVERLAP_KEYS, how="inner")
+
+    def _non_overlap(new_df: pd.DataFrame, old_df: pd.DataFrame) -> pd.DataFrame:
+        """Return rows exclusive to either source (symmetric difference on keys)."""
+        new_only = new_df.merge(old_df[_OVERLAP_KEYS].drop_duplicates(), on=_OVERLAP_KEYS, how="left", indicator=True)
+        new_only = new_only[new_only["_merge"] == "left_only"].drop(columns="_merge")
+        old_only = old_df.merge(new_df[_OVERLAP_KEYS].drop_duplicates(), on=_OVERLAP_KEYS, how="left", indicator=True)
+        old_only = old_only[old_only["_merge"] == "left_only"].drop(columns="_merge")
+        return pd.concat([new_only, old_only], ignore_index=True)
+
+    print("Loading Data (Will take ~2m)")
+    if use_old_data_overlap or non_overlap:
+        load_triplets = get_tripletSets_with_exTSP
+        load_triplets_old = get_tripletSets_with_exTSP_old
+        load_nontarget = get_tripletSets_with_exTSP
+    else:
+        load_triplets = get_tripletSets_with_exTSP_old if (use_old_data or old_target_only) else get_tripletSets_with_exTSP
+        load_triplets_old = None
+        load_nontarget = get_tripletSets_with_exTSP_old if use_old_data else get_tripletSets_with_exTSP
+    _filter = _overlap if use_old_data_overlap else _non_overlap if non_overlap else None
+
     df_target_p = load_triplets(disease, type=typeP)
+    if _filter is not None:
+        df_target_p = _filter(df_target_p, load_triplets_old(disease, type=typeP))
     df_target_b = df_target_p.head(0).copy()
     df_nontarget_p = df_target_p.head(0).copy()
     df_nontarget_b = df_target_p.head(0).copy()
-    nonTarget_str = f'nonTarget' if not use_old_data else f'nonTarget_{disease}'
-    
+    if use_old_data_overlap or non_overlap:
+        nonTarget_str = 'nonTarget'
+    elif use_old_data:
+        nonTarget_str = f'nonTarget_{disease}'
+    else:
+        nonTarget_str = 'nonTarget'
+
     if setting != 3:
         df_target_b = load_triplets(disease, type=typeB)
+        if _filter is not None:
+            df_target_b = _filter(df_target_b, load_triplets_old(disease, type=typeB))
         if setting in [2,5]:
-            df_nontarget_p = load_triplets(nonTarget_str, type=typeP)
-            df_nontarget_b = load_triplets(nonTarget_str, type=typeB)
-    else: 
-        df_nontarget_p = load_triplets(nonTarget_str, type=typeP)
+            df_nontarget_p = load_nontarget(nonTarget_str, type=typeP)
+            df_nontarget_b = load_nontarget(nonTarget_str, type=typeB)
+            if _filter is not None:
+                old_nt_str = f'nonTarget_{disease}'
+                df_nontarget_p = _filter(df_nontarget_p, load_triplets_old(old_nt_str, type=typeP))
+                df_nontarget_b = _filter(df_nontarget_b, load_triplets_old(old_nt_str, type=typeB))
+    else:
+        df_nontarget_p = load_nontarget(nonTarget_str, type=typeP)
+        if _filter is not None:
+            old_nt_str = f'nonTarget_{disease}'
+            df_nontarget_p = _filter(df_nontarget_p, load_triplets_old(old_nt_str, type=typeP))
+    if filter_min_pathogenic:
+        counts = (
+            df_target_p[df_target_p["ClinVar_annotation"].str.contains("athogenic", na=False, case=False)]
+            .groupby(C.GENE)[C.VARIANT].nunique()
+        )
+        valid_genes = counts[counts >= 3].index
+        df_target_p = df_target_p[df_target_p[C.GENE].isin(valid_genes)]
     df_target_p = filter_columns(df_target_p)
     df_target_b = filter_columns(df_target_b)
     df_nontarget_p = filter_columns(df_nontarget_p)
@@ -351,8 +435,9 @@ def bootstrap_auc_for_disease(
     if len(df_target_p[C.GENE].unique()) == 1:
         return [], {"mean_auc_isopath": float("nan"), "mean_auc_extsp": float("nan")}
     return bootstrap_auc(df_target_p, df_target_b, df_nontarget_p, df_nontarget_b,
-                            balanced_negative=balanced_negative, 
-                            n_bootstrap=n_bootstrap, 
+                            balanced_negative=balanced_negative,
+                            split_evaluation=split_evaluation,
+                            n_bootstrap=n_bootstrap,
                             prop_gene_draws=prop_gene_draws,
                             random_state=random_state,
                             )
