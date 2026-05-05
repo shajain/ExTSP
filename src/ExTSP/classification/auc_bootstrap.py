@@ -39,6 +39,18 @@ from . import columns as C
 from ExTSP.tissueEnrichment.tissueEnrichment import select_disease_tissue
 
 
+def remove_conflicting_variants_v2(df: pd.DataFrame, df_conflicting: pd.DataFrame) -> pd.DataFrame:
+    if 'GeneSymbol' not in df.columns or 'Name' not in df.columns:
+        print("Warning: skipping conflicting-variant filter — dataframe lacks 'GeneSymbol'/'Name' columns (old data format).")
+        return df
+    conflicting = df_conflicting[df_conflicting['Conflict_Reported'] == 'yes']
+    conflicting_names = set(conflicting['ClinVar_Preferred'])
+    mask = ~df['Name'].isin(conflicting_names)
+    n_removed = df[~mask].drop_duplicates(subset=['GeneSymbol', 'Name']).shape[0]
+    print(f"{n_removed} conflicting variants found in this dataset!")
+    return df[mask]
+
+
 @dataclass
 class BootstrapAUCResult:
     """One bootstrap draw: AUC from IsoPath and from exTSP (may be nan if undefined).
@@ -335,7 +347,8 @@ def bootstrap_auc_for_disease(
     use_old_data: bool = False,
     use_old_data_overlap: bool = False,
     non_overlap: bool = False,
-    old_target_only: bool = False) -> tuple[list[BootstrapAUCResult], dict[str, float]]:
+    old_target_only: bool = False,
+    df_conflicting: pd.DataFrame | None = None) -> tuple[list[BootstrapAUCResult], dict[str, float]]:
     """
     Same as :func:`bootstrap_auc`, but builds ``df_target`` / ``df_nontarget`` from
     ``disease`` and ``setting`` via :func:`~ExTSP.classification.triplet_data.load_triplet_dataframes`
@@ -421,6 +434,11 @@ def bootstrap_auc_for_disease(
         if _filter is not None:
             old_nt_str = f'nonTarget_{disease}'
             df_nontarget_p = _filter(df_nontarget_p, load_triplets_old(old_nt_str, type=typeP))
+    if df_conflicting is not None:
+        df_target_p    = remove_conflicting_variants_v2(df_target_p,    df_conflicting)
+        df_target_b    = remove_conflicting_variants_v2(df_target_b,    df_conflicting)
+        df_nontarget_p = remove_conflicting_variants_v2(df_nontarget_p, df_conflicting)
+        df_nontarget_b = remove_conflicting_variants_v2(df_nontarget_b, df_conflicting)
     if filter_min_pathogenic:
         counts = (
             df_target_p[df_target_p["ClinVar_annotation"].str.contains("athogenic", na=False, case=False)]

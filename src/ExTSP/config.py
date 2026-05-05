@@ -29,7 +29,8 @@ VariantAnnotations_file = FILTERED_DIR / "variant_annotations.tsv"
 exTSP_file_gtex = PROCESSED_DIR / "exTSP_gtex.tsv"
 exTSP_file_brainspan_cortical = PROCESSED_DIR / "exTSP_brainspan_cortical.tsv"
 
-OLD_DATA_DIR = DATA_DIR / 'Tulika_data' 
+OLD_DATA_DIR = DATA_DIR / 'Tulika_data'
+ConflictingVariants_file = DATA_DIR / "summary_of_conflicting_interpretations.txt"
 
 
 

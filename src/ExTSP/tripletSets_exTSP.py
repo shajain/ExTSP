@@ -30,7 +30,7 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
             df_vars = df_vars[VUS_idx]  
         else:
             exit("Invalid type")
-        df_vars = df_vars[["Variant", "ClinicalSignificance"]]
+        df_vars = df_vars[["Variant", "GeneSymbol", "Name", "ClinicalSignificance"]]
     elif type in ["case", "control"] and disease == "ASD":
         iscase = isCase_ASD(df_vars["Status"])
         if type == "case":
@@ -39,7 +39,7 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
             df_vars = df_vars[~iscase]
         else:
             exit("Invalid type")
-        df_vars = df_vars[["Variant", "Status", "ClinicalSignificance", "In_ClinVar"]]
+        df_vars = df_vars[["Variant", "GeneSymbol", "Name", "Status", "ClinicalSignificance", "In_ClinVar"]]
     df_vars.rename(columns={"ClinicalSignificance": "ClinVar_annotation"}, inplace=True)
     df_extsp = df_extsp.merge(df_vars, on="Variant", how="inner")
     if brainspan:

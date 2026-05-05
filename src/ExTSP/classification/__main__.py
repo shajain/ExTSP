@@ -9,9 +9,10 @@ import argparse
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from ExTSP.classification.auc_bootstrap import bootstrap_auc_for_disease
-from ExTSP.config import Diseases
+from ExTSP.config import Diseases, ConflictingVariants_file
 
 
 _ALL_DISEASES = ["ASD", "CM", "PCD"]
@@ -108,6 +109,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--print-tissue",
         action="store_true",
         help="Print value counts of best_tissue selected across bootstrap replicates.",
+    )
+    p.add_argument(
+        "--remove-conflicting-variants",
+        action="store_true",
+        help="Filter out variants with conflicting ClinVar interpretations before bootstrapping.",
     )
     return p
 
@@ -227,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
     diseases = _ALL_DISEASES if args.disease == "all" else [args.disease]
     settings = [1, 2, 3, 4, 5] if args.setting == "all" else [args.setting]
 
+    df_conflicting = None
+    if args.remove_conflicting_variants:
+        df_conflicting = pd.read_csv(ConflictingVariants_file, sep="\t")
+
     generate_plot = args.disease == "all" and args.setting == "all"
     plot_results = {cond: {} for cond in _DISEASE_TO_CONDITION.values()} if generate_plot else None
 
@@ -244,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
                 use_old_data_overlap=args.use_old_data_overlap,
                 non_overlap=args.non_overlap,
                 old_target_only=args.old_target_only,
+                df_conflicting=df_conflicting,
             )
             print(f"disease={disease!r} setting={setting} n_bootstrap={args.n_bootstrap}")
             print(f"combined:           isopath={summary['mean_auc_isopath']:.4f}  extsp={summary['mean_auc_extsp']:.4f}")
@@ -251,7 +262,6 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"pathogenic-neg only: isopath={summary['mean_auc_isopath_pathneg']:.4f}  extsp={summary['mean_auc_extsp_pathneg']:.4f}")
                 print(f"benign-neg only:     isopath={summary['mean_auc_isopath_benneg']:.4f}  extsp={summary['mean_auc_extsp_benneg']:.4f}")
             if args.print_tissue and results:
-                import pandas as pd
                 counts = pd.Series([r.best_tissue for r in results]).value_counts()
                 tissue_str = ", ".join(f"{tissue}-{n}" for tissue, n in counts.items())
                 print(f"best_tissue: {tissue_str}")
