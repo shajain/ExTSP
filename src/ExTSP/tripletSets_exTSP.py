@@ -89,7 +89,7 @@ def get_tripletSets_with_exTSP_old(disease, type="all", brainspan=False,  numVar
         else:
             exit("Invalid type")
     elif type in ["case", "control"] and disease == "ASD":
-        iscase = isCase_ASD(df_extsp["Status"])
+        iscase = isCase_ASD(df_extsp["ClinVar_annotation"])
         if type == "case":
             df_extsp = df_extsp[iscase]
         elif type == "control":
