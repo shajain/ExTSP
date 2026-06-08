@@ -26,10 +26,11 @@ def filterPathOrCases(df, onlyP=False):
     return df_Path  
 
 def clinSig_bool(clinSig, onlyP=False):
-    PLP_idx = np.array(['pathogenic' in cs.lower() for cs in clinSig])
-    BLB_idx = np.array(['benign' in cs.lower() for cs in clinSig])
-    VUS_idx = np.array(['uncertain significance' in cs.lower() for cs in clinSig])  
-    likely_idx = np.array(['likely' in cs.lower() for cs in clinSig])
+    cs_lower = [cs.lower() if isinstance(cs, str) else '' for cs in clinSig]
+    PLP_idx = np.array(['pathogenic' in cs for cs in cs_lower])
+    BLB_idx = np.array(['benign' in cs for cs in cs_lower])
+    VUS_idx = np.array(['uncertain significance' in cs for cs in cs_lower])
+    likely_idx = np.array(['likely' in cs for cs in cs_lower])
     PLP_idx = PLP_idx & ~BLB_idx & ~VUS_idx
     BLB_idx = BLB_idx & ~PLP_idx & ~VUS_idx
     P_idx = PLP_idx & ~likely_idx

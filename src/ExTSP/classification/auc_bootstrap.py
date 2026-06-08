@@ -36,7 +36,7 @@ from ExTSP.isoformSelection.IsoformSelection_Variant import exTSP_selected_isofo
 from ExTSP.config import VariantSets
 
 from . import columns as C
-from ExTSP.tissueEnrichment.tissueEnrichment import select_disease_tissue
+from ExTSP.tissueEnrichment.tissueEnrichment import select_disease_tissue, select_top_k_tissues
 
 
 def remove_conflicting_variants_v2(df: pd.DataFrame, df_conflicting: pd.DataFrame) -> pd.DataFrame:
@@ -62,7 +62,7 @@ class BootstrapAUCResult:
     """
     auc_isopath: float
     auc_extsp: float
-    best_tissue: str
+    best_tissue: str | list[str]
     # n_oob_variants_pt: int
     # n_oob_variants_bt: int
     # n_oob_variants_pn: int
@@ -150,9 +150,10 @@ def build_positive_negative_triplets(
     iso_bt = exTSP_selected_isoform(filter_by_gene(ben_target, oob_genes, gene_col), isoform_col)
     iso_pn = exTSP_selected_isoform(filter_by_gene(path_nontarget, oob_genes, gene_col), isoform_col)
     iso_bn = exTSP_selected_isoform(filter_by_gene(ben_nontarget, oob_genes, gene_col), isoform_col)
-    pos = iso_pt[iso_pt[tissue_col] == best_tissue]
+    tissues = [best_tissue] if isinstance(best_tissue, str) else best_tissue
+    pos = iso_pt[iso_pt[tissue_col].isin(tissues)]
     neg_path = pd.concat(
-        [iso_pt[iso_pt[tissue_col] != best_tissue], iso_pn], axis=0, ignore_index=True
+        [iso_pt[~iso_pt[tissue_col].isin(tissues)], iso_pn], axis=0, ignore_index=True
     )
     neg_path = neg_path.drop_duplicates(subset=[variant_col, isoform_col, tissue_col])
     neg_ben = pd.concat([iso_bt, iso_bn], axis=0, ignore_index=True)
@@ -171,7 +172,7 @@ def _auc_binary(pos: pd.DataFrame, neg: pd.DataFrame, score_col: str) -> float:
     return float(roc_auc_score(y[m], s[m]))
 
 
-def create_bootstrap_result(pos: pd.DataFrame, neg: pd.DataFrame, best_tissue: str, variant_col: str, isopath_col: str, extsp_col: str, gene_col: str) -> BootstrapAUCResult:
+def create_bootstrap_result(pos: pd.DataFrame, neg: pd.DataFrame, best_tissue: str | list[str], variant_col: str, isopath_col: str, extsp_col: str, gene_col: str) -> BootstrapAUCResult:
     auc_iso = _auc_binary(pos, neg, isopath_col)
     auc_ex = _auc_binary(pos, neg, extsp_col)
     return BootstrapAUCResult(
@@ -209,6 +210,7 @@ def run_one_bootstrap(
     prop_gene_draws: float | None = None,
     rng: np.random.Generator | None = None,
     filter_min_pathogenic: bool = False,
+    top_k_tissues: int | None = None,
     gene_col: str = C.GENE,
     variant_col: str = C.VARIANT,
     tissue_col: str = C.TISSUE,
@@ -231,7 +233,10 @@ def run_one_bootstrap(
     draw, oob_genes = _bootstrap_draw_and_oob(unique_genes_pos, unique_genes_all, rng, prop_gene_draws=prop_gene_draws)
 
     pt_boot = path_target[path_target[gene_col].isin(draw)]
-    best_tissue = select_disease_tissue(pt_boot)
+    if top_k_tissues is not None:
+        best_tissue = select_top_k_tissues(pt_boot, top_k_tissues)
+    else:
+        best_tissue = select_disease_tissue(pt_boot)
 
     pos, neg_path, neg_ben = build_positive_negative_triplets(
         best_tissue, path_target, ben_target, path_nontarget, ben_nontarget, oob_genes, gene_col,
@@ -268,6 +273,7 @@ def bootstrap_auc(
     n_bootstrap: int = 100,
     prop_gene_draws: float | None = None,
     random_state: int = 42,
+    top_k_tissues: int | None = None,
     gene_col: str = C.GENE,
     variant_col: str = C.VARIANT,
     tissue_col: str = C.TISSUE,
@@ -304,6 +310,7 @@ def bootstrap_auc(
                 balanced_negative=balanced_negative,
                 split_evaluation=split_evaluation,
                 filter_min_pathogenic=filter_min_pathogenic,
+                top_k_tissues=top_k_tissues,
                 gene_col=gene_col,
                 variant_col=variant_col,
                 tissue_col=tissue_col,
@@ -344,6 +351,7 @@ def bootstrap_auc_for_disease(
     n_bootstrap: int = 100,
     prop_gene_draws: float | None = None,
     random_state: int = 42,
+    top_k_tissues: int | None = None,
     use_old_data: bool = False,
     use_old_data_overlap: bool = False,
     non_overlap: bool = False,
@@ -458,4 +466,5 @@ def bootstrap_auc_for_disease(
                             n_bootstrap=n_bootstrap,
                             prop_gene_draws=prop_gene_draws,
                             random_state=random_state,
+                            top_k_tissues=top_k_tissues,
                             )

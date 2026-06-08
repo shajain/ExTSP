@@ -16,6 +16,10 @@ def select_disease_tissue(df):
     selected_tissue = tissue_probabilities[["proportion_og"]].idxmax().item()
     return selected_tissue
 
+def select_top_k_tissues(df, k):
+    tissue_probabilities = ComputeTissueEnrichment(df)
+    return tissue_probabilities["proportion_og"].nlargest(k).index.tolist()
+
 def ComputeTissueEnrichment_normalize_max_exTSP(df, score_col="exTSP"):
     """
     Tissue enrichment using exTSP (not ptse).

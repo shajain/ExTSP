@@ -17,6 +17,8 @@ from ExTSP.config import Diseases, ConflictingVariants_file
 
 _ALL_DISEASES = ["ASD", "CM", "PCD"]
 
+_DISEASE_DEFAULT_TOPK = {"ASD": 1, "CM": 1, "PCD": 3}
+
 
 def _setting_type(v: str) -> "int | str":
     if v == "all":
@@ -115,12 +117,29 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Filter out variants with conflicting ClinVar interpretations before bootstrapping.",
     )
+    p.add_argument(
+        "--topktissues",
+        type=int,
+        default=None,
+        metavar="K",
+        help="Use the top K tissues (by enrichment) as positives instead of a single best tissue. "
+             "Defaults: ASD=1, CM=1, PCD=3.",
+    )
     return p
 
-def plot_auc_comparison(results):
+_CONDITION_FULL_NAME = {
+    'ASD': 'Autism Spectrum Disorder (ASD)',
+    'Cardiomyopathy': 'Cardiomyopathy (CM)',
+    'PCD': 'Primary Ciliary Dyskinesia (PCD)',
+    'PKD': 'Polycystic Kidney Disease (PKD)',
+    'PH': 'Pulmonary Hypertension (PH)',
+}
+
+
+def plot_auc_comparison(results, args_label: str = ""):
     """
     Plot AUC comparison boxplots for different conditions and scenarios.
-    
+
     Parameters:
     -----------
     results : dict
@@ -133,25 +152,23 @@ def plot_auc_comparison(results):
                 }
             }
         }
-        Expected conditions: 'ASD', 'Cardiomyopathy', 'PCD'
-    
+
     Returns:
     --------
     fig, axes : matplotlib figure and axes objects
     """
-    
-    # Create figure with 3 subplots
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
-    # Define colors for the two methods
+    conditions = list(results.keys())
+    n_conditions = len(conditions)
+
+    fig, axes = plt.subplots(1, n_conditions, figsize=(5 * n_conditions, 5))
+    if n_conditions == 1:
+        axes = [axes]
+
     colors = {'MutPred2': '#60B85F', 'exTSP': '#FAA43A'}
-    
-    # Panel labels
-    panel_labels = ['A', 'B', 'C']
-    conditions = ['ASD', 'Cardiomyopathy', 'PCD']
-    full_names = ['Autism Spectrum Disorder (ASD)', 'Cardiomyopathy (CM)', 'Primary Ciliary Dyskinesis (PCD)']
-    
-    for idx, (condition, full_name) in enumerate(zip(conditions, full_names)):
+    panel_labels = [chr(ord('A') + i) for i in range(n_conditions)]
+
+    for idx, condition in enumerate(conditions):
+        full_name = _CONDITION_FULL_NAME.get(condition, condition)
         ax = axes[idx]
         
         # Get scenarios for this condition
@@ -205,7 +222,8 @@ def plot_auc_comparison(results):
         # Add title with panel label
         ax.text(-0.15, 1.05, panel_labels[idx], transform=ax.transAxes,
                 fontsize=16, fontweight='bold', va='top')
-        ax.set_title(full_name, fontsize=12, fontweight='bold', pad=20)
+        title = f"{full_name}\n{args_label}" if args_label else full_name
+        ax.set_title(title, fontsize=12, fontweight='bold', pad=20)
         
         # Add grid
         ax.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.5)
@@ -219,13 +237,13 @@ def plot_auc_comparison(results):
             ax.legend(handles=legend_elements, loc='upper center', frameon=True, ncol=2)
     
     # Add x-axis label for middle panel
-    axes[1].set_xlabel('Classification Scenarios', fontsize=12)
-    
+    axes[n_conditions // 2].set_xlabel('Classification Scenarios', fontsize=12)
+
     plt.tight_layout()
     return fig, axes
 
 
-_DISEASE_TO_CONDITION = {'ASD': 'ASD', 'CM': 'Cardiomyopathy', 'PCD': 'PCD'}
+_DISEASE_TO_CONDITION = {'ASD': 'ASD', 'CM': 'Cardiomyopathy', 'PCD': 'PCD', 'PKD': 'PKD', 'PH': 'PH'}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -237,11 +255,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.remove_conflicting_variants:
         df_conflicting = pd.read_csv(ConflictingVariants_file, sep="\t")
 
-    generate_plot = args.disease == "all" and args.setting == "all"
-    plot_results = {cond: {} for cond in _DISEASE_TO_CONDITION.values()} if generate_plot else None
+    generate_plot = args.setting == "all"
+    plot_results = {_DISEASE_TO_CONDITION[d]: {} for d in diseases} if generate_plot else None
 
     for disease in diseases:
+        top_k = args.topktissues if args.topktissues is not None else _DISEASE_DEFAULT_TOPK.get(disease, 1)
         for setting in settings:
+            if disease == "ASD" and setting in [4, 5]:
+                continue
             results, summary = bootstrap_auc_for_disease(
                 disease,
                 setting,
@@ -250,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
                 filter_min_pathogenic=args.multivar_genes_only,
                 n_bootstrap=args.n_bootstrap,
                 random_state=args.random_state,
+                top_k_tissues=top_k,
                 use_old_data=args.use_old_data,
                 use_old_data_overlap=args.use_old_data_overlap,
                 non_overlap=args.non_overlap,
@@ -262,8 +284,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"pathogenic-neg only: isopath={summary['mean_auc_isopath_pathneg']:.4f}  extsp={summary['mean_auc_extsp_pathneg']:.4f}")
                 print(f"benign-neg only:     isopath={summary['mean_auc_isopath_benneg']:.4f}  extsp={summary['mean_auc_extsp_benneg']:.4f}")
             if args.print_tissue and results:
-                counts = pd.Series([r.best_tissue for r in results]).value_counts()
-                tissue_str = ", ".join(f"{tissue}-{n}" for tissue, n in counts.items())
+                if top_k > 1:
+                    all_lists = [r.best_tissue for r in results]
+                    tissue_str = "; ".join(str(t) for t in all_lists)
+                else:
+                    counts = pd.Series([r.best_tissue for r in results]).value_counts()
+                    tissue_str = ", ".join(f"{tissue}-{n}" for tissue, n in counts.items())
                 print(f"best_tissue: {tissue_str}")
             print(f"completed {len(results)} replicates")
 
@@ -275,8 +301,45 @@ def main(argv: list[str] | None = None) -> int:
                 }
 
     if generate_plot:
-        fig, _ = plot_auc_comparison(plot_results)
-        pdf_path = "auc_comparison--old-data-new-nontarget.pdf"
+        flag_parts = []
+        if args.use_old_data:
+            flag_parts.append("old-data")
+        if args.use_old_data_overlap:
+            flag_parts.append("old-data-overlap")
+        if args.non_overlap:
+            flag_parts.append("non-overlap")
+        if args.old_target_only:
+            flag_parts.append("old-target-only")
+        if args.remove_conflicting_variants:
+            flag_parts.append("no-conflicting")
+        if args.topktissues is not None:
+            flag_parts.append(f"top{args.topktissues}")
+        if args.balanced_negative:
+            flag_parts.append("balanced")
+        if args.multivar_genes_only:
+            flag_parts.append("multivar")
+        args_label = ", ".join(flag_parts)
+        fig, _ = plot_auc_comparison(plot_results, args_label=args_label)
+        parts = ["auc_comparison"]
+        if args.disease != "all":
+            parts.append(args.disease.lower())
+        if args.use_old_data:
+            parts.append("old-data")
+        if args.use_old_data_overlap:
+            parts.append("old-data-overlap")
+        if args.non_overlap:
+            parts.append("non-overlap")
+        if args.old_target_only:
+            parts.append("old-target-only")
+        if args.remove_conflicting_variants:
+            parts.append("no-conflicting")
+        if args.topktissues is not None:
+            parts.append(f"top{args.topktissues}")
+        if args.balanced_negative:
+            parts.append("balanced")
+        if args.multivar_genes_only:
+            parts.append("multivar")
+        pdf_path = "-".join(parts) + ".pdf"
         fig.savefig(pdf_path, bbox_inches='tight')
         plt.close(fig)
         print(f"Saved AUC comparison plot to {pdf_path}")

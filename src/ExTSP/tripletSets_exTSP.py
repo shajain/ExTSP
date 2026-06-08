@@ -30,7 +30,7 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
             df_vars = df_vars[VUS_idx]  
         else:
             exit("Invalid type")
-        df_vars = df_vars[["Variant", "GeneSymbol", "Name", "ClinicalSignificance"]]
+        df_vars = df_vars[["Variant", "GeneSymbol", "ClinicalSignificance"]]
     elif type in ["case", "control"] and disease == "ASD":
         iscase = isCase_ASD(df_vars["Status"])
         if type == "case":
@@ -39,7 +39,7 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
             df_vars = df_vars[~iscase]
         else:
             exit("Invalid type")
-        df_vars = df_vars[["Variant", "GeneSymbol", "Name", "Status", "ClinicalSignificance", "In_ClinVar"]]
+        df_vars = df_vars[["Variant", "GeneSymbol", "Status", "ClinicalSignificance", "In_ClinVar"]]
     df_vars.rename(columns={"ClinicalSignificance": "ClinVar_annotation"}, inplace=True)
     df_extsp = df_extsp.merge(df_vars, on="Variant", how="inner")
     if brainspan:
@@ -54,11 +54,13 @@ def get_tripletSets_with_exTSP(disease, type="all", brainspan=False,  numVars=No
 def get_tripletSets_with_exTSP_old(disease, type="all", brainspan=False,  numVars=None):
     # type = "all", "P", "PLP", "B", "BLB", "VUS", "case", "control"
     # disease = "ASD", "CM", "PCD", "PKD", "PH", "nonTarget"
-    diseases = ["CM", "PCD", "ASD"]
+    _old_name_map = {"PKD": "KD"}
+    diseases = ["CM", "PCD", "ASD", "PH", "KD"]
     nonTarget = False
-    if disease not in diseases:
-        disease = disease.split("_")[1]
+    if disease.startswith("nonTarget"):
+        disease = disease.split("_")[1] if "_" in disease else disease
         nonTarget = True
+    disease = _old_name_map.get(disease, disease)
     exTSP_file_old = OLD_DATA_DIR / f"extsp_{disease}.tsv"
     exTSP_file_disease = OLD_DATA_DIR / f"classification/exTSP_file_expression_ensemble_annotation_{disease}.tsv"
     df_extsp_disease = pd.read_csv(exTSP_file_disease, sep='\t')
