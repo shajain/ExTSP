@@ -5,6 +5,7 @@ import matplotlib.colors as mcolors
 import urllib.request
 import ssl
 from matplotlib.lines import Line2D
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
 
 # Helper function to get the MANE-select transcript
 def get_mane_select(transcript_ids):
@@ -73,18 +74,21 @@ def plot_extsp(variant, gene, plot_df, mane_results):
     plt.show()
     return fig, ax
 
-# Load the Cardiomyopathy data
-file_path = "/Users/karnamendonca-kamath/Desktop/ex-TSP/data/exTSP_file_expression_ensemble_annotation_Cardiomyopathy.tsv"
-df = pd.read_csv(file_path, sep='\t')
+# Load the Cardiomyopathy data (old version)
+# file_path = "/Users/karnamendonca-kamath/Desktop/ex-TSP/data/exTSP_file_expression_ensemble_annotation_Cardiomyopathy.tsv"
+# df = pd.read_csv(file_path, sep='\t')
+
+# Load the Cardiomyopathy data (new version)
+df = get_tripletSets_with_exTSP("CM", "VUS")
 
 # Get mane results
 mane_results = get_mane_select(df["Transcript_id"].unique())
 
-# Filter for VUS
-sub_df = df[df['ClinVar_annotation'] == "Uncertain significance"]
+# Filter for VUS (old version; now we load only VUS)
+# sub_df = df[df['ClinVar_annotation'] == "Uncertain significance"]
 
 # Then only select those with a high enough IsoPath score to not be LB/B
-sub_df = sub_df[sub_df['IsoPath'] > 0.0999]
+sub_df = df[df['IsoPath'] > 0.0999]
 
 # Target tissues for Cardiomyopathy
 target_tissues = ["Heart_Left_Ventricle", "Heart_Atrial_Appendage", "Artery_Coronary",
@@ -117,22 +121,25 @@ sub_hits = hits.groupby("Variant").filter(lambda x: x["Transcript_id"].nunique()
 # If you want to list out all genes and variants to try different combinations
 # print(sub_hits[["Gene", "Variant"]].drop_duplicates())
 
+# Directory to save figures in
+fig_dir = "/Users/karnamendonca-kamath/Desktop/exTSP2/ExTSP/src/ExTSP/figures/"
+
 # Variant for TNNT2
 fig, ax = plot_extsp("1_201361314_C/A", "TNNT2", sub_df, mane_results)
 # Save as PDF
-fig.savefig('outputs/fig3a_TNN2.pdf', bbox_inches='tight')
+fig.savefig(fig_dir + 'fig3a_TNN2.pdf', bbox_inches='tight')
 
 # Variant for SCN5A
 fig, ax = plot_extsp("3_38551307_C/T", "SCN5A", sub_df, mane_results)
 # Save as PDF
-fig.savefig('outputs/fig3a_SCN5A.pdf', bbox_inches='tight')
+fig.savefig(fig_dir + 'fig3a_SCN5A.pdf', bbox_inches='tight')
 
 # Variant for TPM1
 fig, ax = plot_extsp("15_63042855_A/G", "TPM1", sub_df, mane_results)
 # Save as PDF
-fig.savefig('outputs/fig3a_TPM1.pdf', bbox_inches='tight')
+fig.savefig(fig_dir + 'fig3a_TPM1.pdf', bbox_inches='tight')
 
 # Variant for MYBPC3
 fig, ax = plot_extsp("11_47338588_C/A", "MYBPC3", sub_df, mane_results)
 # Save as PDF
-fig.savefig('outputs/fig3a_MYBPC3.pdf', bbox_inches='tight')
+fig.savefig(fig_dir + 'fig3a_MYBPC3.pdf', bbox_inches='tight')

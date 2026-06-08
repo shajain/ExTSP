@@ -156,7 +156,7 @@ def plot_fig3c(results):
     return fig, ax
 
 def main():
-# %%
+
     file_dir = {
         "CM": cm_path,
         "PCD": pcd_path,
