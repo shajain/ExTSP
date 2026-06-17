@@ -5,12 +5,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import matplotlib.colors as mcolors
 import warnings
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
 
 # Shut up the depreciation warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 data_dir = "/Users/karnamendonca-kamath/Desktop/ex-TSP/data/"
-gtex_path = data_dir + "exTSP_file_expression_ensemble_annotation_ASD_Satt_Fu_GTEx.tsv"
 brainspan_path = data_dir + "exTSP_file_expression_ensemble_annotation_ASD_Satt_Fu_BrainSpan.tsv"
 
 brainspan_df = pd.read_csv(brainspan_path, sep="\t")
@@ -44,11 +44,11 @@ def select_tissue(df, case=1, ASD=False):
     '''
     Input: The dataframe for the targe disease only
 
-    Let tmax(i) denote the tissue where isoform i has the highest expression. 
+    Let tmax(i) denote the tissue where isoform i has the highest expression.
     In terms of Ptse it can be defined as, tmax(i) = argmaxtPtse(i, t).
 
-    We define S(V, t), the tissue impact score of tissue t, with respect to a 
-    variant set V , as the number of variant-isoform pairs (v, i) in V × I for 
+    We define S(V, t), the tissue impact score of tissue t, with respect to a
+    variant set V , as the number of variant-isoform pairs (v, i) in V × I for
     which t is the tissue with the highest expression of isoform i
     '''
 
@@ -62,11 +62,11 @@ def select_tissue(df, case=1, ASD=False):
 
     # Return the most-impacted tissue
     # print(df_subsampled['Tissue'].value_counts())
-    return df_subsampled['Tissue'].value_counts().keys()[0]
+    return df_subsampled['Tissue'].value_counts().index[0]
 
 def select_isoform(df):
     '''
-    For each variant we consider the isoform with the highest value of Ptse(i, t) as the most 
+    For each variant we consider the isoform with the highest value of Ptse(i, t) as the most
     important isoform for the variant. We refer to this isoform as Ptse-select isoform.
 
     Returns a reduced version of the dataframe with the selected isoform for each variant
@@ -76,13 +76,10 @@ def select_isoform(df):
     transcript_scores.columns = ['Variant', 'Transcript_id', 'max_ptse']
 
     # Step 2: For each Variant, find the Transcript_id with the highest max_ptse
-    # If there's a tie, sample(1) will pick one randomly
-    best_transcripts = (transcript_scores
-                        .groupby('Variant')
-                        .apply(lambda x: x.loc[x['max_ptse'] == x['max_ptse'].max()]
-                            .sample(1))
-                        .reset_index(drop=True)
-                        [['Variant', 'Transcript_id']])
+    # Shuffle first so idxmax breaks ties randomly (pandas 3.0 compat: avoid apply with group key)
+    shuffled = transcript_scores.sample(frac=1)
+    idx = shuffled.groupby('Variant')['max_ptse'].idxmax()
+    best_transcripts = shuffled.loc[idx, ['Variant', 'Transcript_id']].reset_index(drop=True)
 
     # Step 3: Filter the original dataframe to keep only rows with the selected Variant-Transcript_id pairs
     df_reduced = df.merge(best_transcripts, on=['Variant', 'Transcript_id'], how='inner')
@@ -102,7 +99,7 @@ def proportion_pathogenic_VUS(df, mode="IsoPath", brainspan=False, agg="avg"):
     else:
         # df = select_isoform(df)
         if brainspan:
-            ## Aggregate over tissues (avg or max) 
+            ## Aggregate over tissues (avg or max)
             if agg == "avg":
                 df = df.groupby(["Gene", "Variant", "Transcript_id"], as_index=False).mean(numeric_only=True)
                 df = df.loc[df.groupby(["Gene", "Variant"])["exTSP"].idxmax()]
@@ -114,7 +111,7 @@ def proportion_pathogenic_VUS(df, mode="IsoPath", brainspan=False, agg="avg"):
             path_vus = len(df)
             return path_vus / total_vus, path_vus, total_vus
         else:
-            tissue = df[df["Relevant_Tissue"]]["Tissue"].value_counts().keys()[0]
+            tissue = df[df["Relevant_Tissue"]]["Tissue"].value_counts().index[0]
             df = df[df["Tissue"] == tissue]
             df = df[df["exTSP"] > 0.0999]
             path_vus = len(df[["Gene", "Variant"]].drop_duplicates())
@@ -161,7 +158,7 @@ def plot_fig3c(results):
     ax.legend(fontsize=10, loc="upper left")
 
     ax.set_title(
-        "Fig3C — Pathogenic VUS proportions across ASD Datasets \n"
+        "Fig3C —Proportion of VUS reclassified as pathogenic across ASD Datasets \n"
         "IsoPath vs exTSP (Relevant_Tissue and max over transcripts)",
         fontsize=13, fontweight="bold"
     )
@@ -180,11 +177,17 @@ def main():
     fetal = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7']
     adult = ['P8', 'P9', 'P10', 'P11', 'P12', 'P13']
 
+    gtex_df = get_tripletSets_with_exTSP("ASD", "case")
+    gtex_df['ClinVar_annotation'] = 'ASD'
+    gtex_df['Relevant_Tissue'] = gtex_df['Tissue'] == 'Brain_Frontal_Cortex_BA9'
+
     data_dir = {
-        "GTEx": pd.read_csv(gtex_path, sep="\t"),
-        "Brainspan Fetal": brainspan_df[brainspan_df["Tissue"].isin(fetal)],
-        "Brainspan Adult": brainspan_df[brainspan_df["Tissue"].isin(adult)]
+        "GTEx": gtex_df,
+        "Brainspan Prenatal": brainspan_df[brainspan_df["Tissue"].isin(fetal)],
+        "Brainspan Postnatal": brainspan_df[brainspan_df["Tissue"].isin(adult)]
     }
+
+    fig_dir = "/Users/karnamendonca-kamath/Desktop/exTSP2/ExTSP/src/ExTSP/figures/"
 
     for agg in ["avg", "max"]:
         results = {}
@@ -198,7 +201,7 @@ def main():
             results[disease] = disease_results
 
         fig, ax = plot_fig3c(results)
-        fig.savefig(f'outputs/fig3c_asd_{agg}.pdf', bbox_inches='tight')
+        fig.savefig(fig_dir + f'fig3c_asd_{agg}.pdf', bbox_inches='tight')
 
 
 if __name__ == "__main__":

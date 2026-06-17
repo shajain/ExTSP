@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import matplotlib.colors as mcolors
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
 import warnings
 
 # Shut up the depreciation warnings
@@ -54,7 +55,7 @@ def select_tissue(df, case=1, ASD=False):
 
     # Return the most-impacted tissue
     # print(df_subsampled['Tissue'].value_counts())
-    return df_subsampled['Tissue'].value_counts().keys()[0]
+    return df_subsampled['Tissue'].value_counts().index[0]
 
 def select_isoform(df):
     '''
@@ -68,13 +69,10 @@ def select_isoform(df):
     transcript_scores.columns = ['Variant', 'Transcript_id', 'max_ptse']
 
     # Step 2: For each Variant, find the Transcript_id with the highest max_ptse
-    # If there's a tie, sample(1) will pick one randomly
-    best_transcripts = (transcript_scores
-                        .groupby('Variant')
-                        .apply(lambda x: x.loc[x['max_ptse'] == x['max_ptse'].max()]
-                            .sample(1))
-                        .reset_index(drop=True)
-                        [['Variant', 'Transcript_id']])
+    # Shuffle first so idxmax breaks ties randomly (pandas 3.0 compat: avoid apply with group key)
+    shuffled = transcript_scores.sample(frac=1)
+    idx = shuffled.groupby('Variant')['max_ptse'].idxmax()
+    best_transcripts = shuffled.loc[idx, ['Variant', 'Transcript_id']].reset_index(drop=True)
 
     # Step 3: Filter the original dataframe to keep only rows with the selected Variant-Transcript_id pairs
     df_reduced = df.merge(best_transcripts, on=['Variant', 'Transcript_id'], how='inner')
@@ -96,7 +94,7 @@ def proportion_pathogenic_VUS(df, mode="IsoPath"):
     else:
         if mode == "Relevant Tissue":
             # filter for relevant tissue
-            tissue = df[df["Relevant_Tissue"]]["Tissue"].value_counts().keys()[0]
+            tissue = df[df["Relevant_Tissue"]]["Tissue"].value_counts().index[0]
         df = df[df["Tissue"] == tissue]
         total_vus = len(df) #BEcause we've already removed redundant tissues
         df = df[df["exTSP"] > 0.0999]
@@ -142,7 +140,7 @@ def plot_fig3c(results):
     ax.legend(fontsize=10, loc="upper right")
 
     ax.set_title(
-        "Fig3C — Pathogenic VUS proportions across diseases\n"
+        "Fig3C — Proportion of VUS reclassified as pathogenic across diseases\n"
         "IsoPath vs exTSP (Relevant_Tissue and max over transcripts)",
         fontsize=13, fontweight="bold"
     )
@@ -156,24 +154,37 @@ def plot_fig3c(results):
     return fig, ax
 
 def main():
+    # Old (unnecesary)
+    # file_dir = {
+    #     "CM": cm_path,
+    #     "PCD": pcd_path,
+    #     "PH": ph_path,
+    #     "KD": kd_path
+    # }
 
-    file_dir = {
-        "CM": cm_path,
-        "PCD": pcd_path,
-        "PH": ph_path,
-        "KD": kd_path
+    # New implementation
+    diseases = ['CM', 'PCD', 'PH', 'PKD']
+    relevant_tissues = {
+        'CM':  'Heart_Left_Ventricle',
+        'PCD': 'Testis',
+        'PH':  'Lung',
+        'PKD': 'Kidney_Medulla',
     }
 
     results = {}
-    for disease in file_dir:
-        df = pd.read_csv(file_dir[disease], sep="\t")
+    for disease in diseases:
+        # df = pd.read_csv(file_dir[disease], sep="\t") #Old
+        df = get_tripletSets_with_exTSP(disease, 'all')
+        df['Relevant_Tissue'] = df['Tissue'] == relevant_tissues[disease]
         disease_results = {}
         for mode in ["IsoPath", "Tissue select", "Relevant Tissue"]:
             disease_results[mode] = proportion_pathogenic_VUS(df, mode=mode)
         results[disease] = disease_results
 
+    fig_dir = "/Users/karnamendonca-kamath/Desktop/exTSP2/ExTSP/src/ExTSP/figures/"
+
     fig, ax = plot_fig3c(results)
-    fig.savefig('outputs/fig3c.pdf', bbox_inches='tight')
+    fig.savefig(fig_dir + 'fig3c.pdf', bbox_inches='tight')
 
 
 if __name__ == "__main__":
