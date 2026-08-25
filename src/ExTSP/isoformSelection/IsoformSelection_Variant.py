@@ -16,13 +16,21 @@ def exTSP_selected_isoform_Tissue(df, Tissue):
     return exTSP_selected_isoform(df)
 
 def exTSP_selected_isoform(df, selectionColumn="exTSP", isoform_col="Transcript_id"):
-    df_exTSP_selected = pd.DataFrame()
-    for _, group_df in df.groupby('Variant'):
-        #get the row with maximum exTSP
-        exTSP_selected_transcript = group_df.loc[group_df[selectionColumn].idxmax()]["Transcript_id"]
-        group_df_exTSP_selected = group_df[group_df["Transcript_id"] == exTSP_selected_transcript]
-        df_exTSP_selected = pd.concat([df_exTSP_selected, group_df_exTSP_selected])
-    return df_exTSP_selected.reset_index(drop=True)
+    # For each variant, keep all rows of the transcript whose row has the highest
+    # selectionColumn value (first occurrence on ties). Vectorized equivalent of a
+    # per-variant groupby loop (which was O(n^2) due to concat-in-loop).
+    if df.empty:
+        return df.reset_index(drop=True)
+    # Per variant, index of the row with the maximum selectionColumn value.
+    idx = df.groupby("Variant")[selectionColumn].idxmax()
+    selected_transcript = (
+        df.loc[idx, ["Variant", "Transcript_id"]]
+        .set_index("Variant")["Transcript_id"]
+    )
+    mask = df["Transcript_id"] == df["Variant"].map(selected_transcript)
+    # Match the original groupby('Variant') ordering: sorted by Variant, with the
+    # original row order preserved within each variant.
+    return df[mask].sort_values("Variant", kind="stable").reset_index(drop=True)
 
 def isoformSelectionVariant(df, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
     df_Path = filterPathOrCases(df)

@@ -32,4 +32,7 @@ src/ExTSP/phenotypes/medgen.py
 src/ExTSP/phenotypes/mondo.py
 src/ExTSP/phenotypes/omim.py
 src/ExTSP/phenotypes/phenotypes.py
+src/ExTSP/scripts/fig_3a.py
+src/ExTSP/scripts/fig_3c.py
+src/ExTSP/scripts/fig_3c_asd.py
 src/ExTSP/tissueEnrichment/tissueEnrichment.py

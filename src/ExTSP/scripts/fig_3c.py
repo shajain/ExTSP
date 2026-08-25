@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import matplotlib.colors as mcolors
 from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
+from ExTSP.isoformSelection.IsoformSelection_Variant import exTSP_selected_isoform
 import warnings
 
 # Shut up the depreciation warnings
@@ -57,31 +58,11 @@ def select_tissue(df, case=1, ASD=False):
     # print(df_subsampled['Tissue'].value_counts())
     return df_subsampled['Tissue'].value_counts().index[0]
 
-def select_isoform(df):
-    '''
-    For each variant we consider the isoform with the highest value of Ptse(i, t) as the most 
-    important isoform for the variant. We refer to this isoform as Ptse-select isoform.
-
-    Returns a reduced version of the dataframe with the selected isoform for each variant
-    '''
-    # Step 1: Calculate the max ptse score for each Variant-Transcript_id combination
-    transcript_scores = df.groupby(['Variant', 'Transcript_id'])['ptse'].max().reset_index()
-    transcript_scores.columns = ['Variant', 'Transcript_id', 'max_ptse']
-
-    # Step 2: For each Variant, find the Transcript_id with the highest max_ptse
-    # Shuffle first so idxmax breaks ties randomly (pandas 3.0 compat: avoid apply with group key)
-    shuffled = transcript_scores.sample(frac=1)
-    idx = shuffled.groupby('Variant')['max_ptse'].idxmax()
-    best_transcripts = shuffled.loc[idx, ['Variant', 'Transcript_id']].reset_index(drop=True)
-
-    # Step 3: Filter the original dataframe to keep only rows with the selected Variant-Transcript_id pairs
-    df_reduced = df.merge(best_transcripts, on=['Variant', 'Transcript_id'], how='inner')
-    return df_reduced
-
 def proportion_pathogenic_VUS(df, mode="IsoPath"):
     assert mode in ["IsoPath", "Tissue select", "Relevant Tissue"]
 
-    df = select_isoform(df)
+    print(f"Running Isoform Selection")
+    df = exTSP_selected_isoform(df)
     if mode == "Tissue select":
         tissue = select_tissue(df)
     df = df[df['ClinVar_annotation'] == "Uncertain significance"]
@@ -90,7 +71,7 @@ def proportion_pathogenic_VUS(df, mode="IsoPath"):
     if mode == "IsoPath":
         df = df[df['IsoPath'] > 0.0999]
         path_vus = len(df[["Gene", "Variant"]].drop_duplicates())
-        return path_vus / total_vus
+        return path_vus / total_vus, path_vus, total_vus
     else:
         if mode == "Relevant Tissue":
             # filter for relevant tissue
@@ -99,7 +80,7 @@ def proportion_pathogenic_VUS(df, mode="IsoPath"):
         total_vus = len(df) #BEcause we've already removed redundant tissues
         df = df[df["exTSP"] > 0.0999]
         path_vus = len(df)
-        return path_vus / total_vus
+        return path_vus / total_vus, path_vus, total_vus
 
 def plot_fig3c(results):
     """
@@ -113,36 +94,39 @@ def plot_fig3c(results):
             }
     """
     diseases = list(results.keys())
-    isopath_vals = [results[d]["IsoPath"] * 100 for d in diseases]
-    extsp_vals   = [results[d]["Relevant Tissue"] * 100 for d in diseases]
+    isopath_vals   = [results[d]["IsoPath"][0] * 100 for d in diseases]
+    extsp_vals     = [results[d]["Relevant Tissue"][0] * 100 for d in diseases]
+    isopath_counts = [(results[d]["IsoPath"][1], results[d]["IsoPath"][2]) for d in diseases]
+    extsp_counts   = [(results[d]["Relevant Tissue"][1], results[d]["Relevant Tissue"][2]) for d in diseases]
 
     x = np.arange(len(diseases))
     width = 0.35
 
     fig, ax = plt.subplots(figsize=(12, 7))
 
-    bars1 = ax.bar(x - width/2, isopath_vals, width, color="#4472C4", label=r"IsoPath $\geq$ 0.0999 (relevant rows)")
-    bars2 = ax.bar(x + width/2, extsp_vals,   width, color="#ED7D31", label=r"exTSP $\geq$ 0.0999 (relevant rows)")
+    bars1 = ax.bar(x - width/2, isopath_vals, width, color="#4472C4", label=r"IsoPath")
+    bars2 = ax.bar(x + width/2, extsp_vals,   width, color="#ED7D31", label=r"exTSP")
 
-    for bar, val in zip(bars1, isopath_vals):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.8,
-                f"{val:.3g}%", ha="center", va="bottom", fontsize=8.5)
+    for bar, val, (num, den) in zip(bars1, isopath_vals, isopath_counts):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1.5,
+                f"{val:.3g}%\n({num}/{den})", ha="center", va="bottom", fontsize=13)
 
-    for bar, val in zip(bars2, extsp_vals):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.8,
-                f"{val:.3g}%", ha="center", va="bottom", fontsize=8.5)
+    for bar, val, (num, den) in zip(bars2, extsp_vals, extsp_counts):
+        ax.text(bar.get_x() + bar.get_width()/2 + 0.05, bar.get_height() + 1.5,
+                f"{val:.3g}%\n({num}/{den})", ha="center", va="bottom", fontsize=13)
 
-    ax.set_ylim(0, 50)
-    ax.set_ylabel("Pathogenic VUS (%)", fontsize=12)
+    ax.set_ylim(0, 60)
+    ax.set_ylabel("Proportion of VUS reclassified as pathogenic (%)", fontsize=20, y=0.50)
     ax.set_xticks(x)
-    ax.set_xticklabels(diseases, rotation=30, ha="right", fontsize=11)
+    ax.set_xticklabels(diseases, rotation=30, ha="right", fontsize=23)
     ax.set_yticks(range(0, 51, 10))
-    ax.legend(fontsize=10, loc="upper right")
+    ax.tick_params(axis="y", labelsize=20)
+    ax.tick_params(axis="x", length=0)
+    ax.legend(fontsize=16, loc="upper right")
 
     ax.set_title(
-        "Fig3C — Proportion of VUS reclassified as pathogenic across diseases\n"
-        "IsoPath vs exTSP (Relevant_Tissue and max over transcripts)",
-        fontsize=13, fontweight="bold"
+        "Proportion of VUS reclassified as pathogenic across diseases",
+        fontsize=20, fontweight="bold", pad=20
     )
 
     ax.spines["top"].set_visible(False)
@@ -174,6 +158,7 @@ def main():
     results = {}
     for disease in diseases:
         # df = pd.read_csv(file_dir[disease], sep="\t") #Old
+        print(f"Loading {disease} data")
         df = get_tripletSets_with_exTSP(disease, 'all')
         df['Relevant_Tissue'] = df['Tissue'] == relevant_tissues[disease]
         disease_results = {}

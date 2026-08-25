@@ -5,7 +5,10 @@ import matplotlib.colors as mcolors
 import urllib.request
 import ssl
 from matplotlib.lines import Line2D
-from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP, get_tripletSets_with_exTSP_old
+
+use_old_data = True
+
 
 # Helper function to get the MANE-select transcript
 def get_mane_select(transcript_ids):
@@ -79,7 +82,10 @@ def plot_extsp(variant, gene, plot_df, mane_results):
 # df = pd.read_csv(file_path, sep='\t')
 
 # Load the Cardiomyopathy data (new version)
-df = get_tripletSets_with_exTSP("CM", "VUS")
+if use_old_data:
+    df = get_tripletSets_with_exTSP_old("CM", "VUS")
+else:
+    df = get_tripletSets_with_exTSP("CM", "VUS")
 
 # Get mane results
 mane_results = get_mane_select(df["Transcript_id"].unique())
