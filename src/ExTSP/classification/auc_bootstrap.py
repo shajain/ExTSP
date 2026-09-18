@@ -286,6 +286,8 @@ def bootstrap_auc(
     summary = {
         "mean_auc_isopath": _mean([r.auc_isopath for r in results]),
         "mean_auc_extsp": _mean([r.auc_extsp for r in results]),
+        "median_auc_isopath": np.median([r.auc_isopath for r in results]),
+        "median_auc_extsp": np.median([r.auc_extsp for r in results]),
     }
     return results, summary
 

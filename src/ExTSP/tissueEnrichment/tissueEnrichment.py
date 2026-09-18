@@ -6,14 +6,15 @@ import pickle
 import sys
 import argparse
 from ExTSP.commonFunctions import summaryStats, filterPathOrCases, clinSig_bool
-from ExTSP.config import DATA_DIR, RESULTS_DIR, FIGURES_DIR, NUM_CPU, NBOOT
-from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
+from ExTSP.config import DATA_DIR, RESULTS_DIR, NUM_CPU, NBOOT, FIGURES_TISSUE_ENRICHMENT_DIR
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP, get_tripletSets_with_exTSP_old, get_tripletSets_with_exTSP_old2
+import os
 
 PERFORM_STATISTICAL_TESTS = False
 
-def select_disease_tissue(df):
+def select_disease_tissue(df, num_tissues=1):
     tissue_probabilities = ComputeTissueEnrichment(df)
-    selected_tissue = tissue_probabilities[["proportion_og"]].idxmax().item()
+    selected_tissue = tissue_probabilities[["proportion_og"]].nlargest(num_tissues).index.tolist()
     return selected_tissue
 
 def ComputeTissueEnrichment_normalize_max_exTSP(df, score_col="exTSP"):
@@ -191,10 +192,27 @@ def getTargetAndNonTargetDFs_old(disease, Files):
     # print("non-target ", disease, nonTarget_df.shape)
     return target_df, nonTarget_df
 
-def getTargetAndNonTargetDFs(disease):
+# def getTargetAndNonTargetDFs(disease, old_target_data=False, SDV=True):
+#     type = "PLP" if disease!="ASD" else "case"
+#     if old_target_data:
+#         targetVars_df = get_tripletSets_with_exTSP_old2(disease, type=type, SDV=SDV)
+#         nonTargetVars_df = get_tripletSets_with_exTSP('nonTarget', type="PLP")
+#     else:   
+#         targetVars_df = get_tripletSets_with_exTSP(disease, type=type)
+#         nonTargetVars_df = get_tripletSets_with_exTSP('nonTarget', type="PLP")
+#     return targetVars_df, nonTargetVars_df
+
+def getTargetAndNonTargetDFs(disease, old_target_data=True):
     type = "PLP" if disease!="ASD" else "case"
-    targetVars_df = get_tripletSets_with_exTSP(disease, type=type)
-    nonTargetVars_df = get_tripletSets_with_exTSP('nonTarget', type="PLP")
+    if old_target_data:
+        targetVars_df = get_tripletSets_with_exTSP(disease, type=type, new=False)
+        #For non-target, new=True or False should give the same result since we ensured that  
+        # exTSP file contains new non-target variants even with old target data
+        # and there is only once excel sheet contianing non-target variants for all diseases
+        nonTargetVars_df = get_tripletSets_with_exTSP('nonTarget', type=type, new=False)
+    else:   
+        targetVars_df = get_tripletSets_with_exTSP(disease, type=type, new=True)
+        nonTargetVars_df = get_tripletSets_with_exTSP('nonTarget', type=type, new=True)
     return targetVars_df, nonTargetVars_df
 
 def lolipop_plot(df_target, df_ntarget, statSig, key, col, title):
@@ -210,17 +228,17 @@ def lolipop_plot(df_target, df_ntarget, statSig, key, col, title):
     # Style markers
     markerline.set_markerfacecolor(col)
     markerline.set_markeredgecolor('none')
-    markerline.set_markersize(5)
+    markerline.set_markersize(8)
     #markerline.set_marker('o')
 
     # Style stem lines
     stemlines.set_color('black')
-    stemlines.set_linewidth(1)
+    stemlines.set_linewidth(2)
     #stemlines.set_linestyle('-')
     markerline, stemlines, baseline = ax.stem(df_ntarget[key] ,label='Non-Target', markerfmt='o',linefmt='none', basefmt=" ")
     markerline.set_markerfacecolor("0.7")
     markerline.set_markeredgecolor('none')
-    markerline.set_markersize(5)
+    markerline.set_markersize(7)
 
     if statSig:
         ax.plot(df_target.index.to_list().index(maxTissue), df_target.loc[maxTissue, key].item()+0.07, marker='*', color='black', markersize=5)
@@ -232,7 +250,14 @@ def lolipop_plot(df_target, df_ntarget, statSig, key, col, title):
     ax.set_ylim(0, 1.05)
     plt.title(title)
     plt.legend()
-    plt.savefig(f"{FIGURES_DIR}/{title}_tissueEnrichment.pdf", bbox_inches='tight')
+    dir_path = FIGURES_TISSUE_ENRICHMENT_DIR
+    png_file = f"{disease}_old_target_data_{key}.png"
+    pdf_file = f"{disease}_old_target_data_{key}.pdf"
+    os.makedirs(dir_path, exist_ok=True)
+    plt.savefig(dir_path / pdf_file, bbox_inches='tight')
+    plt.savefig(dir_path / png_file, bbox_inches='tight')
+    print(f"Saved tissue enrichment plot to {dir_path.joinpath(pdf_file)}")
+    print(f"Saved tissue enrichment plot to {dir_path.joinpath(png_file)}")
     #plt.show()
 
 def extractSDVRows(df):
@@ -263,25 +288,34 @@ if __name__ == "__main__":
     print("Number of CPUs set to:", NUM_CPU)
         
     diseases = ["CM", "PKD", "PH", "PCD", "ASD"]
+    #diseases = ["CM", "PCD", "ASD"]
     #diseases = ["PKD", "PH", "PCD", "ASD"]
     #diseases = ["ASD"]
-    files = {d: {"VIT": f'{DATA_DIR}/TissueEnrichment/{d}_VITs.tsv', 
-                 "targetVars": f'{DATA_DIR}/TissueEnrichment/{d}_targetVars.tsv', 
-                 "nontargetVars": f'{DATA_DIR}/TissueEnrichment/{d}_nontargetVars.tsv'} for d in diseases}
-    colors= {"CM": '#8B3649', "PKD": '#d95f02', "PH": '#7570b3', "PCD": '#4468A7', "ASD": '#839741'}
+    # files = {d: {"VIT": f'{DATA_DIR}/TissueEnrichment/{d}_VITs.tsv', 
+    #              "targetVars": f'{DATA_DIR}/TissueEnrichment/{d}_targetVars.tsv', 
+    #              "nontargetVars": f'{DATA_DIR}/TissueEnrichment/{d}_nontargetVars.tsv'} for d in diseases}
+    #colors= {"CM": '#8B3649', "PKD": '#d95f02', "PH": '#7570b3', "PCD": '#4468A7', "ASD": '#839741'}
+    # My color scheme:
+    # colors = {"CM": '#003f5c', "PKD": '#ff5f66', "PH": '#bc4c96', "PCD": '#594e90', "ASD": '#ffa600'}
+    # Karna's color scheme:
+    # colors = {'CM': '#0077B6', 'PCD': '#8261C9', 'ASD': '#D95F02'}
+    #Integrated color scheme:
+    colors = {'CM': '#0077B6', 'PKD': '#ff5f66', 'PH': '#bc4c96', 'PCD': '#8261C9', 'ASD': '#D95F02'}
     #key = 'proportion'
     key = 'proportion_og'
+    old_target_data = True
+    #SDV = False
     for disease in diseases:
         # target_df, nonTarget_df = getTargetAndNonTargetDFs(disease, files)
-        target_df, nonTarget_df = getTargetAndNonTargetDFs(disease)
+        target_df, nonTarget_df = getTargetAndNonTargetDFs(disease, old_target_data=old_target_data)
         # if disease == "CM":
         #     print(target_df.shape)
         #     VCEP = ["MYH7","MYBPC3","TNNT2","TPM1","MYL2","MYL3","TNNI3","ACTC1"]
         #     target_df = target_df[target_df["Gene"].isin(VCEP)]
         #     print(target_df.shape)
         #     #nonTarget_df = extractSDVRows(nonTarget_df)
-        summaryStats(target_df, disease, target=True, type="SDV")
-        summaryStats(nonTarget_df, disease, target=False, type="SDV")
+        summaryStats(target_df, disease, target=True)
+        summaryStats(nonTarget_df, disease, target=False)
         TE_target = ComputeTissueEnrichment(target_df)
         TE_ntarget = ComputeTissueEnrichment(nonTarget_df)
         pickle.dump( (TE_target, TE_ntarget), 

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def summaryStats(df, disease, target, type):
+def summaryStats(df, disease, target):
     df_GV = df[["Gene", "Variant"]].drop_duplicates()
     num_genes = df_GV['Gene'].nunique()
     num_variants = df_GV['Variant'].nunique()

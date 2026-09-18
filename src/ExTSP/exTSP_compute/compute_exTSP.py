@@ -1,10 +1,14 @@
-from ExTSP.config import PTSE_file_gtex, PTSE_file_brainspan_cortical, MutPred2_processed_file
-from ExTSP.config import exTSP_file_gtex, exTSP_file_brainspan_cortical, MANE_transcripts_file
+from ExTSP.config import PTSE_file_gtex, PTSE_file_brainspan_by_developmental_period, PTSE_file_brainspan_by_region
+from ExTSP.config import PTSE_file_brainspan_regions_no_P13, PTSE_file_brainspan_by_developmental_period_no_P13
+from ExTSP.config import MutPred2_processed_file
+from ExTSP.config import exTSP_file_gtex, exTSP_file_brainspan_by_developmental_period, exTSP_file_brainspan_by_region
+from ExTSP.config import exTSP_file_brainspan_by_developmental_period_no_P13, exTSP_file_brainspan_regions_no_P13
+from ExTSP.config import MANE_transcripts_file
 import pandas as pd
 
 from pathlib import Path
 
-def generate_exTSP_scores(df_mp2, df_ptse, df_mane=None, brainspan=False):
+def generate_exTSP_scores(df_mp2, df_ptse, df_mane=None, brainspan=False, by_developmental_period=False):
     # Rename MANE transcript columns and create Transcript column containing ENST without version number
     if df_mane is not None:
         df_mane.rename(columns={"Ensembl_nuc": "Transcript_id"}, inplace=True)
@@ -16,7 +20,10 @@ def generate_exTSP_scores(df_mp2, df_ptse, df_mane=None, brainspan=False):
         df_mane.drop(columns=["MANE_status"], inplace=True)
     # Select, Rename PTSE columns and create Transcript column containing ENST without version number
     if brainspan:
-        df_ptse = df_ptse[["transcript_id","gene_name","Developmental_Period", "Regioncode","meanTPM","ptse","normalizedLR"]]
+        if by_developmental_period:
+            df_ptse = df_ptse[["transcript_id","gene_name","Developmental_Period", "Region","meanTPM","ptse","normalizedLR"]]
+        else:
+            df_ptse = df_ptse[["transcript_id","gene_name","Region","meanTPM","ptse","normalizedLR"]]
     else:
         df_ptse = df_ptse[["transcript_id","gene_name","tissue","meanTPM","ptse","normalizedLR"]]
     df_ptse.rename(columns={"transcript_id": "Transcript_id", "gene_name": "Gene", "tissue": "Tissue"}, inplace=True)
@@ -36,7 +43,10 @@ def generate_exTSP_scores(df_mp2, df_ptse, df_mane=None, brainspan=False):
     cols = ["Gene", "Transcript", "Transcript_id", "Variant", "MutPred2", "IsoPath", "ptse", "exTSP", "meanTPM"] 
     mane_cols = ["MANE_Select", "MANE_Plus_Clinical"]
     if brainspan:
-        cols.extend(["Developmental_Period", "Regioncode"])
+        if by_developmental_period:
+            cols.extend(["Developmental_Period", "Region"])
+        else:
+            cols.extend(["Region"])
     else:
         cols.append("Tissue")
     if df_mane is not None:
@@ -57,13 +67,28 @@ if __name__ == "__main__":
         df_exTSP = generate_exTSP_scores(df_mp2, df_ptse, df_mane)
         df_exTSP.to_csv(exTSP_file_gtex, sep='\t', index=False)
         print(f"Saved exTSP file to {exTSP_file_gtex}")
-    if not Path(PTSE_file_brainspan_cortical).exists():
+
+    no_P13 = False
+    if no_P13:
+        PTSE_file_brainspan_by_developmental_period = PTSE_file_brainspan_by_developmental_period_no_P13
+        PTSE_file_brainspan_by_region = PTSE_file_brainspan_regions_no_P13
+        exTSP_file_brainspan_by_developmental_period = exTSP_file_brainspan_by_developmental_period_no_P13
+        exTSP_file_brainspan_by_region = exTSP_file_brainspan_regions_no_P13
+    if not Path(PTSE_file_brainspan_by_developmental_period).exists():
         exit("Run compute_PTSE.py first")    
-    if not Path(exTSP_file_brainspan_cortical).exists():
-        df_ptse = pd.read_csv(PTSE_file_brainspan_cortical, sep='\t')
+    if not Path(exTSP_file_brainspan_by_developmental_period).exists():
+        df_ptse = pd.read_csv(PTSE_file_brainspan_by_developmental_period, sep='\t')
         df_ptse.rename(columns={"transcript": "transcript_id", "external_gene_name": "gene_name",}, inplace=True)
         df_mp2 = pd.read_csv(MutPred2_processed_file, sep='\t')
         df_mane = pd.read_csv(MANE_transcripts_file, sep = "\t")
-        df_exTSP = generate_exTSP_scores(df_mp2, df_ptse, df_mane, brainspan=True)
-        df_exTSP.to_csv(exTSP_file_brainspan_cortical, sep='\t', index=False)
-        print(f"Saved exTSP file to {exTSP_file_brainspan_cortical}")
+        df_exTSP = generate_exTSP_scores(df_mp2, df_ptse, df_mane, brainspan=True, by_developmental_period=True)
+        df_exTSP.to_csv(exTSP_file_brainspan_by_developmental_period, sep='\t', index=False)
+        print(f"Saved exTSP file to {exTSP_file_brainspan_by_developmental_period}")
+    if not Path(exTSP_file_brainspan_by_region).exists():
+        df_ptse = pd.read_csv(PTSE_file_brainspan_by_region, sep='\t')
+        df_ptse.rename(columns={"transcript": "transcript_id", "external_gene_name": "gene_name",}, inplace=True)
+        df_mp2 = pd.read_csv(MutPred2_processed_file, sep='\t')
+        df_mane = pd.read_csv(MANE_transcripts_file, sep = "\t")
+        df_exTSP = generate_exTSP_scores(df_mp2, df_ptse, df_mane, brainspan=True, by_developmental_period=False)
+        df_exTSP.to_csv(exTSP_file_brainspan_by_region, sep='\t', index=False)
+        print(f"Saved exTSP file to {exTSP_file_brainspan_by_region}")

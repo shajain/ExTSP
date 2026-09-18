@@ -4,7 +4,10 @@ import pandas as pd
 import numpy as np
 from scipy.stats import zscore
 from scipy.stats import norm
-from ExTSP.config import GTeX_file, BrainSpan_expression_file_cortical, PTSE_file_gtex, PTSE_file_brainspan_cortical
+from ExTSP.config import GTeX_file, BrainSpan_expression_file_all_regions, PTSE_file_gtex 
+from ExTSP.config import PTSE_file_brainspan_by_developmental_period, PTSE_file_brainspan_by_region
+from ExTSP.config import PTSE_file_brainspan_regions_no_P13, PTSE_file_brainspan_by_developmental_period_no_P13
+from ExTSP.config import BrainSpan_regions_file
 from pathlib import Path
 
 
@@ -31,7 +34,7 @@ def ptse2normalizedLR(ptse, eps=1e-10):
     lr = ptse / denom
 
     lr_max = np.max(lr, axis=1, keepdims=True)
-    assert any(lr_max <= 0), "lr_max is less than or equal to 0"
+    assert all(lr_max > 0.0), "lr_max is less than or equal to 0"
     lr_max = np.where(lr_max == 0, 1.0, lr_max)
     normalized_lr = lr / lr_max
     return normalized_lr
@@ -40,7 +43,7 @@ def zscore_rows(x, eps=1e-10):
     """Per-row z-score across columns. x shape (n_rows, n_cols)."""
     x = np.asarray(x, dtype=float)
     mu = x.mean(axis=1, keepdims=True)
-    std = x.std(axis=1, keepdims=True)
+    std = x.std(axis=1, keepdims=True, ddof=0)
     std = np.where(std < eps, 1.0, std)
     z = (x - mu) / std
     z = np.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
@@ -143,6 +146,7 @@ def meltTissues_df(df, var_name, value_name, idx, idx_meta):
 
 def main(df_expr, var_name, idx, idx_meta):
     all_zero_rows = df_expr.iloc[:,idx].sum(axis=1)==0
+    df_expr = df_expr[~all_zero_rows]
     idx_zero = df_expr.iloc[:,idx] == 0
     print(f"number of rows with all zeros: {all_zero_rows.sum()}")
     #df_expr = df_expr[~all_zero_rows]
@@ -182,6 +186,17 @@ def main(df_expr, var_name, idx, idx_meta):
     df_melted = df_melted.loc[:, ~df_melted.columns.duplicated()]
     return df_melted
 
+def brainspan_combine_subregions(df_expr, no_P13=False):
+    df_regions = pd.read_excel(BrainSpan_regions_file, sheet_name="main")
+    df_expr = df_expr.merge(df_regions, left_on="Regioncode", right_on="Sub_region_code", how="inner")
+    df_expr.drop(columns=["Regioncode", "Sub_region_code"], inplace=True)
+    df_expr1 = df_expr.copy()
+    if no_P13:
+        df_expr2 = df_expr1.groupby(["transcript", "external_gene_name", "Region"]).agg({f"P{i}": "mean" for i in range(2, 13)}).reset_index()
+    else:
+        df_expr2 = df_expr1.groupby(["transcript", "external_gene_name", "Region"]).agg({f"P{i}": "mean" for i in range(2, 14)}).reset_index()
+    return df_expr2
+
 if __name__ == "__main__":
     if Path(PTSE_file_gtex).exists():
     #if False:
@@ -194,16 +209,44 @@ if __name__ == "__main__":
         df_melted = main(df_expr, "tissue", idx=idx, idx_meta=idx_meta)
         df_melted.to_csv(PTSE_file_gtex, index=False, sep='\t')
         print(f"PTSE scores saved in {PTSE_file_gtex}")
-    if Path(PTSE_file_brainspan_cortical).exists():
-        print(f"PTSE scores are already exist in {PTSE_file_brainspan_cortical}")
+
+    no_P13 = True
+    if no_P13:
+        PTSE_file_brainspan_by_developmental_period = PTSE_file_brainspan_by_developmental_period_no_P13
+        PTSE_file_brainspan_by_region = PTSE_file_brainspan_regions_no_P13
+    if Path(PTSE_file_brainspan_by_developmental_period).exists():
+        print(f"PTSE scores are already exist in {PTSE_file_brainspan_by_developmental_period}")
     else:
-        df_expr = pd.read_csv(BrainSpan_expression_file_cortical, sep='\t')
+        df_expr = pd.read_csv(BrainSpan_expression_file_all_regions, sep='\t')
+        if no_P13:
+            df_expr.drop(columns=["P13"], inplace=True)
+            last_col_idx = df_expr.shape[1]
+        df_expr = brainspan_combine_subregions(df_expr, no_P13=no_P13)
         df_expr = df_expr.fillna(0.0)
-        idx = slice(3,15)
-        idx_meta = list(range(0, 3)) + list(range(15, df_expr.shape[1]))
+        df_expr = df_expr[["transcript", "external_gene_name", "Region", *[f"P{i}" for i in range(2, last_col_idx-1)]]]
+        idx = slice(3,last_col_idx)
+        idx_meta = list(range(0, 3)) + list(range(last_col_idx, df_expr.shape[1]))
         df_melted = main(df_expr, "Developmental_Period", idx=idx, idx_meta=idx_meta)
-        df_melted.to_csv(PTSE_file_brainspan_cortical, index=False, sep='\t')
-        print(f"PTSE scores saved in {PTSE_file_brainspan_cortical}")
+        df_melted.to_csv(PTSE_file_brainspan_by_developmental_period, index=False, sep='\t')
+        print(f"PTSE scores saved in {PTSE_file_brainspan_by_developmental_period}")
+    if Path(PTSE_file_brainspan_by_region).exists():
+        print(f"PTSE scores are already exist in {PTSE_file_brainspan_by_region}")
+    else:
+        df_expr = pd.read_csv(BrainSpan_expression_file_all_regions, sep='\t')
+        if no_P13:
+            df_expr.drop(columns=["P13"], inplace=True)
+            last_col_idx = df_expr.shape[1]
+
+        df_expr = brainspan_combine_subregions(df_expr, no_P13=no_P13)
+        df_expr = df_expr.fillna(0.0)
+        df_expr["avg_over_developmental_period"] = df_expr[[f"P{i}" for i in range(2, last_col_idx-1)]].mean(axis=1)
+        nRegions = df_expr["Region"].nunique()
+        df_expr_by_region = df_expr.pivot(index=["transcript", "external_gene_name"], columns="Region", values="avg_over_developmental_period").reset_index()
+        idx = slice(2,df_expr_by_region.shape[1])
+        idx_meta = list(range(0, 2)) 
+        df_melted = main(df_expr_by_region, "Region", idx=idx, idx_meta=idx_meta)
+        df_melted.to_csv(PTSE_file_brainspan_by_region, index=False, sep='\t')
+        print(f"PTSE scores saved in {PTSE_file_brainspan_by_region}")
     print("PTSE scores computation completed")
    
     

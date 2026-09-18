@@ -7,7 +7,9 @@ import argparse
 from ExTSP.isoformSelection.IsoformSelection_Gene import SUPPORTING_EVIDENCE_THRESHOLD
 from ExTSP.commonFunctions import filterPathOrCases, summaryStats
 import seaborn as sns
-
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
+import os
+from ExTSP.config import FIGURES_ISOFORM_SELECTION_DIR
 SUPPORTING_EVIDENCE_THRESHOLD = 0.0999
 
 
@@ -24,9 +26,9 @@ def exTSP_selected_isoform(df, selectionColumn="exTSP", isoform_col="Transcript_
         df_exTSP_selected = pd.concat([df_exTSP_selected, group_df_exTSP_selected])
     return df_exTSP_selected.reset_index(drop=True)
 
-def isoformSelectionVariant(df, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
-    df_Path = filterPathOrCases(df)
-    Tissues = df['Tissue'].unique()
+def isoformSelectionVariant(df_Path, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
+    #df_Path = filterPathOrCases(df)
+    Tissues = df_Path['Tissue'].unique()
     nonRevTissue_ranks = pd.DataFrame(columns=['Tissue', 'rank'])
     nonRelTissues = sorted(list(set(Tissues) - set(relevantTissues+[bestTissue])))
     nonRevTissue_ranks['Tissue'] = nonRelTissues
@@ -131,7 +133,7 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
     y_labels = [f"{row['Gene']}|{row['Variant']}|{row['bestTissueTranscript']}" 
                 for _, row in df_HM.iterrows()]
 
-
+    nDecimals = 2
     # Create annotations with tissue names, transcripts, and scores
     annotations = []
     for _, row in df_HM.iterrows():
@@ -139,9 +141,9 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
              row_annot = [ f"{row['bestTissue']}\n{row['bestTissueTranscript']}\n{row['bestExTSP']:.3f}"] \
              + [ f"{row[nonRelcols[0+i*3]]}\n{row[nonRelcols[1+i*3]]}\n{row[nonRelcols[2+i*3]]:.3f}" for i in range(topr)]
         else:
-            val =  f"{row['bestExTSP']:.3f}" if row["bestExTSP"] > SUPPORTING_EVIDENCE_THRESHOLD else ""
+            val =  f"{row['bestExTSP']:.{nDecimals}f}" if row["bestExTSP"] > SUPPORTING_EVIDENCE_THRESHOLD else ""
             #val =  f"{row['bestExTSP']:.3f}"
-            row_annot = [val] + [ f"{row[nonRelcols[2+i*3]]:.3f}" if row[nonRelcols[2+i*3]] > SUPPORTING_EVIDENCE_THRESHOLD else "" for i in range(topr)]
+            row_annot = [val] + [ f"{row[nonRelcols[2+i*3]]:.{nDecimals}f}" if row[nonRelcols[2+i*3]] > SUPPORTING_EVIDENCE_THRESHOLD else "" for i in range(topr)]
         annotations.append(row_annot)
     if transcriptIdentical:
         Tissues = [bestTissue] + [df_HM[nonRelcols[i]].unique()[0] for i in range(0, len(nonRelcols), 3)]
@@ -150,7 +152,7 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
     # Create heatmap
     #plt.figure(figsize=(14, len(df_varHeatmap1) * 0.6))
     if transcriptIdentical:
-        fig, ax = plt.subplots(figsize=(10, len(df_HM) * 0.3))
+        fig, ax = plt.subplots(figsize=(8, len(df_HM) * 0.3))
     else:
         fig, ax = plt.subplots(figsize=(30, len(df_HM) * 0.6))
     sns.heatmap(heatmap_data, 
@@ -173,11 +175,19 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
         not_mane = transcript != MANE_SELECT and transcript != MANE_CLINICAL
         yticklabel = ax.get_yticklabels()[i]
         if mane_not_present:
-            yticklabel.set_color('#4468A7' )
+            #yticklabel.set_color('#4468A7' )
+            yticklabel.set_color('#950606')
         elif not_mane:
             yticklabel.set_color('#950606' )  # MANE transcripts in green
     plt.tight_layout()
-    plt.savefig(f"Figures/IsoformSelection/Variant_Heatmap_{disease}1.pdf", bbox_inches='tight')
+    dir_path = FIGURES_ISOFORM_SELECTION_DIR/ disease / "Variant_Heatmap"
+    os.makedirs(dir_path, exist_ok=True)
+    pdf_file = f"Variant_Heatmap_{disease}1.pdf"
+    png_file = f"Variant_Heatmap_{disease}1.png"
+    plt.savefig(dir_path / pdf_file, bbox_inches='tight')
+    plt.savefig(dir_path / png_file, bbox_inches='tight')
+    print(f"Saved heatmap to {dir_path.joinpath(pdf_file)}")
+    print(f"Saved heatmap to {dir_path.joinpath(png_file)}")
     #plt.show()
 
 
@@ -205,8 +215,9 @@ if __name__ == "__main__":
     
     vitFile = f'data/IsoformSelection/{disease}_VITs.tsv'
     key = 'proportion_og'
-    vit_df = pd.read_csv(vitFile, sep='\t')
-    summaryStats(vit_df, disease, target=True, type="MDV")
+    #vit_df = pd.read_csv(vitFile, sep='\t')
+    vit_df = get_tripletSets_with_exTSP(disease, type= "plp", new=False)
+    summaryStats(vit_df, disease, target=True)
     topk = 2
     topr = 5
     df_varHeatmap, df_varHeatmap1, displayVar_df = isoformSelectionVariant(vit_df, bestTissue=bestTissue, 

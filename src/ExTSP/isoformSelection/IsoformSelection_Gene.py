@@ -5,6 +5,10 @@ import pdb
 import seaborn as sns
 import argparse
 from ExTSP.commonFunctions import filterPathOrCases, summaryStats, getSingleDiseaseVariants
+from ExTSP.tissueEnrichment.tissueEnrichment import  select_disease_tissue
+from ExTSP.tripletSets_exTSP import get_tripletSets_with_exTSP
+from ExTSP.config import FIGURES_ISOFORM_SELECTION_DIR
+import os
 import seaborn as sns
 from matplotlib.colors import to_rgba
 
@@ -25,9 +29,9 @@ SUPPORTING_EVIDENCE_THRESHOLD = 0.0999
 #     return df_isoform
 
 
-def isoformSelectionGene(df, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
-    df_Path = filterPathOrCases(df, onlyP=False)
-    Tissues = df['Tissue'].unique()
+def isoformSelectionGene(df_Path, bestTissue, relevantTissues, useBestTissueTranscript=True, topk=None, topr=2):
+    #df_Path = filterPathOrCases(df, onlyP=False)
+    Tissues = df_Path['Tissue'].unique()
     nonRevTissue_ranks = pd.DataFrame(columns=['Tissue', 'rank'])
     nonRelTissues = sorted(list(set(Tissues) - set(relevantTissues+[bestTissue])))
     nonRevTissue_ranks['Tissue'] = nonRelTissues
@@ -125,9 +129,9 @@ def isoformSelectionGene(df, bestTissue, relevantTissues, useBestTissueTranscrip
 
 
 
-def isoformSelectionExample(df, bestTissue):
+def isoformSelectionExample(df_Path, bestTissue):
     #filter to pathogenic variants and best tissue
-    df_Path = filterPathOrCases(df, onlyP=False)
+    #df_Path = filterPathOrCases(df, onlyP=False)
     df_Path_bt = df_Path[df_Path['Tissue'] == bestTissue]
 
     output = {}
@@ -215,7 +219,7 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
     y_labels = [f"{row['Gene']}|{row['bestTissueTranscript']}" 
                 for _, row in df_HM.iterrows()]
 
-
+    nDecimals = 2
     # Create annotations with tissue names, transcripts, and scores
     annotations = []
     for _, row in df_HM.iterrows():
@@ -223,9 +227,9 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
              row_annot = [ f"{row['bestTissue']}\n{row['bestTissueTranscript']}\n{row['bestExTSP']:.3f}"] \
              + [ f"{row[nonRelcols[0+i*3]]}\n{row[nonRelcols[1+i*3]]}\n{row[nonRelcols[2+i*3]]:.3f}" for i in range(topr)]
         else:
-            val =  f"{row['bestExTSP']:.3f}" if row["bestExTSP"] > 0.0999 else ""
+            val =  f"{row['bestExTSP']:.{nDecimals}f}" if row["bestExTSP"] > 0.0999 else ""
             #val =  f"{row['bestExTSP']:.3f}"
-            row_annot = [val] + [ f"{row[nonRelcols[2+i*3]]:.3f}" if row[nonRelcols[2+i*3]] > 0.0999 else "" for i in range(topr)]
+            row_annot = [val] + [ f"{row[nonRelcols[2+i*3]]:.{nDecimals}f}" if row[nonRelcols[2+i*3]] > 0.0999 else "" for i in range(topr)]
         annotations.append(row_annot)
     if transcriptIdentical:
         Tissues = [bestTissue] + [df_HM[nonRelcols[i]].unique()[0] for i in range(0, len(nonRelcols), 3)]
@@ -234,13 +238,14 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
     # Create heatmap
     #plt.figure(figsize=(14, len(df_varHeatmap1) * 0.6))
     if transcriptIdentical:
-        fig, ax = plt.subplots(figsize=(10, len(df_HM) * 0.3))
+        fig, ax = plt.subplots(figsize=(6, len(df_HM) * 0.3))
     else:
         fig, ax = plt.subplots(figsize=(30, len(df_HM) * 0.6))
     sns.heatmap(heatmap_data, 
                 annot=annotations,    # Show tissue, transcript, and score
                 fmt='',               # Empty format since we're using custom annotations
                 cmap='Blues',         # Color scheme
+                annot_kws={"fontsize": 8.5},
                 cbar_kws={'label': 'exTSP Score'},
                 xticklabels= Tissues,
                 yticklabels=y_labels)
@@ -257,11 +262,19 @@ def plot_heatmap(df_HM, topr=2, transcriptIdentical=True):
         not_mane = transcript != MANE_SELECT and transcript != MANE_CLINICAL
         yticklabel = ax.get_yticklabels()[i]
         if mane_not_present:
-            yticklabel.set_color('#4468A7' )
+            #yticklabel.set_color('#4468A7' )
+            yticklabel.set_color('#950606')
         elif not_mane:
-            yticklabel.set_color('#950606' )  # MANE transcripts in green
+            yticklabel.set_color('#950606')  # MANE transcripts in green
     plt.tight_layout()
-    plt.savefig(f"Figures/IsoformSelection/{disease}/Gene_Heatmap.pdf", bbox_inches='tight')
+    dir_path = FIGURES_ISOFORM_SELECTION_DIR/ disease
+    pdf_file = f"Gene_Heatmap_{disease}.pdf"
+    png_file = f"Gene_Heatmap_{disease}.png"
+    os.makedirs(dir_path, exist_ok=True)
+    plt.savefig(dir_path / pdf_file, bbox_inches='tight')
+    plt.savefig(dir_path / png_file, bbox_inches='tight')
+    print(f"Saved heatmap to {dir_path.joinpath(pdf_file)}")
+    print(f"Saved heatmap to {dir_path.joinpath(png_file)}")
     #plt.show()
 
 def plot_exampleGeneAndVariants(gene, geneData, disease):
@@ -276,11 +289,19 @@ def plot_exampleGeneAndVariants(gene, geneData, disease):
         transcripts = df['Transcript_id'].values
         mane_select = df["MANE_Select"].values
         mane_clinical = df["MANE_Plus_Clinical"].values
-        color_list = ['#4468A7' if mane else col for mane in mane_select | mane_clinical]
-        
+        mane = mane_select | mane_clinical
+        color_list = ['#4468A7' if mn else col for mn in mane]
+        label_list = ["MANE" if mn else "not MANE" for mn in mane]
         # Plot stem for each point with its color
+        mane_plotted = False
+        non_mane_plotted = False
         for i, (score, color) in enumerate(zip(exTSP_scores, color_list)):
-            markerline, stemlines, baseline = ax.stem([i], [score], markerfmt='o', basefmt=" ")
+            if (mane[i] and not mane_plotted) or (not (mane[i] or non_mane_plotted)):
+                markerline, stemlines, baseline = ax.stem([i], [score], label=label_list[i], markerfmt='o', basefmt=" ")
+            else:
+                markerline, stemlines, baseline = ax.stem([i], [score], markerfmt='o', basefmt=" ")
+            mane_plotted = mane[i] or mane_plotted
+            non_mane_plotted = (not mane[i]) or non_mane_plotted
             markerline.set_markerfacecolor(color)
             markerline.set_markeredgecolor('none')
             markerline.set_markersize(10)
@@ -299,6 +320,7 @@ def plot_exampleGeneAndVariants(gene, geneData, disease):
             counts = df['Variant_counts'].values
             xticklabels = [f"{t} ({c})" for (t,c) in zip(transcripts, counts)]
         ax.set_xticklabels(xticklabels, rotation=45, ha='right')
+        ax.legend(loc='upper right')
         #ax.set_ylim(0, 1.05)
         #set tight layout for ax  
     loliplop(axs[0], varAvg_df, title=f"{disease} | {gene}", yLabel="Average exTSP")
@@ -306,7 +328,14 @@ def plot_exampleGeneAndVariants(gene, geneData, disease):
         loliplop(axs[1], bestVar_df, title=f"{disease} | {gene} | {bestVar}", yLabel="exTSP", var=bestVar)  
     plt.tight_layout()
     #How to save the sublots togenther
-    plt.savefig(f"Figures/IsoformSelection/{disease}/Example_{gene}_{disease}.pdf", bbox_inches='tight')
+    dir_path = FIGURES_ISOFORM_SELECTION_DIR/ disease
+    pdf_file = f"Example_{gene}_{disease}.pdf"
+    png_file = f"Example_{gene}_{disease}.png"
+    os.makedirs(dir_path, exist_ok=True)
+    plt.savefig(dir_path / pdf_file, bbox_inches='tight')
+    plt.savefig(dir_path / png_file, bbox_inches='tight')
+    print(f"Saved example gene and variants to {dir_path.joinpath(pdf_file)}")
+    print(f"Saved example gene and variants to {dir_path.joinpath(png_file)}")
     #plt.show()
 
 
@@ -315,14 +344,17 @@ if __name__ == "__main__":
 
     # # Add keyword arguments
     parser.add_argument("--diseases", type=int, help="Pick disease from CM, KD, PH, PCD, ASD", required=False)
-    BestTissue = {"CM": "Heart_Left_Ventricle","KD":"Kidney_Medulla","PH":"Lung","PCD":"Testis","ASD":"Brain_Cerebellar_Hemisphere"}    
+    BestTissue = {"CM": "Heart_Left_Ventricle","PKD":"Kidney_Medulla","PH":"Lung","PCD":"Testis","ASD":"Brain_Cerebellar_Hemisphere"}    
 
     # Parse the arguments
     args = parser.parse_args()
     if args.diseases:
         diseases = args.diseases
     else:
-        diseases = ["CM","KD","PH","PCD","ASD"]
+        diseases = ["CM","PKD","PH","PCD","ASD"]
+    diseases = ["CM"]
+
+    #BestTissue = {d: }
     
     for disease in diseases:
         bestTissue = BestTissue[disease]
@@ -332,9 +364,11 @@ if __name__ == "__main__":
     
         vitFile = f'data/IsoformSelection/{disease}_VITs.tsv'
         key = 'proportion_og'
-        vit_df = pd.read_csv(vitFile, sep='\t')
+        #vit_df = pd.read_csv(vitFile, sep='\t')
+        type = "plp" if disease != "ASD" else "case"
+        vit_df = get_tripletSets_with_exTSP(disease, type= type, new=False)
         #vit_df, _ = getSingleDiseaseVariants(disease)
-        summaryStats(vit_df, disease, target=True, type="MDV")
+        summaryStats(vit_df, disease, target=True)
         topk = 3
         topr = 5
         df_varHeatmap, df_varHeatmap1 = isoformSelectionGene(vit_df, bestTissue=bestTissue, 
