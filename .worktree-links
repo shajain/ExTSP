@@ -1,0 +1,12 @@
+# Paths that git will not carry into a new worktree, because they are
+# untracked or ignored, but the project needs anyway.
+#
+# scripts/new-worktree.sh symlinks each one back to the main checkout. That
+# means the contents are SHARED with the main project, not isolated -- writing
+# to a linked path from a worktree writes to the real thing.
+#
+# One relative path per line. Blank lines and "#" comments are ignored. A path
+# that does not exist is reported and skipped, not created as a broken link.
+
+# DVC-managed, ~14 GB, deliberately not in git
+src/ExTSP/data
