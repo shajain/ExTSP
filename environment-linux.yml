@@ -1,0 +1,38 @@
+# Linux-compatible rebuild of environment.yml.
+# Original was exported on macOS (osx-arm64) with exact build strings, which do
+# not exist for linux-aarch64. Versions are preserved; build strings dropped.
+name: exTSP
+channels:
+  - conda-forge
+dependencies:
+  # --- interpreter ---
+  - python=3.10.20
+  - pip=26.0.1
+
+  # --- scientific stack (versions from the original export) ---
+  - numpy=2.2.6
+  - pandas=2.3.3
+  - scipy=1.15.2
+  - scikit-learn=1.7.2
+  - statsmodels=0.14.6
+  - matplotlib=3.10.8
+  - seaborn=0.13.2
+  - networkx=3.4.2
+  - joblib=1.5.3
+
+  # --- ontology / web (phenotypes: OMIM, MONDO, MedGen) ---
+  - pronto=2.7.3
+  - requests=2.32.5
+  - chardet=5.2.0
+
+  # --- NOT in the original export, but required by the code ---
+  - openpyxl          # pd.ExcelWriter(engine="openpyxl") in extractVariants.py
+  - ipykernel         # needed to actually run tutorial.ipynb / test.ipynb
+
+  # --- notebook tooling (was pip-installed in the original) ---
+  - nbconvert
+  - nbformat
+  - nbclient
+
+  - pip:
+      - pipreqs==0.5.0
