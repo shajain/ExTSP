@@ -24,6 +24,7 @@ $RECYCLE.BIN/
 # VS Code
 .vscode/
 *.code-workspace
+.devcontainer/
 
 # IntelliJ IDEA
 .idea/
@@ -67,6 +68,7 @@ dist/
 build/
 out/
 target/
+*.egg-info/
 *.exe
 *.dll
 *.so
@@ -114,6 +116,14 @@ __pycache__/
 *.cert
 credentials.json
 secrets.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Large local data — kept out of git (manage with DVC if it needs versioning)
+data_backup/
+MutPred2_scores/
+files_outside_src/
 
 # Misc
 .sass-cache/
