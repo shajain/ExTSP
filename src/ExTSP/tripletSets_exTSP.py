@@ -1,6 +1,6 @@
-from ExTSP.config import exTSP_file_gtex, exTSP_file_gtex_new
-from ExTSP.config import exTSP_file_brainspan_by_developmental_period, exTSP_file_brainspan_by_region
-from ExTSP.config import exTSP_file_brainspan_by_developmental_period_no_P13, exTSP_file_brainspan_regions_no_P13
+from ExTSP.config import exTSP_file_gtex #, exTSP_file_gtex_new
+from ExTSP.config import exTSP_file_brainspan, exTSP_file_brainspan_no_P13
+#from ExTSP.config import exTSP_file_brainspan_by_region, exTSP_file_brainspan_by_regions_no_P13
 from ExTSP.config import ExtractedVariants_file, VariantSets, OLD_DATA_DIR
 from ExTSP.commonFunctions import isCase_ASD, clinSig_bool
 import pandas as pd
@@ -18,27 +18,26 @@ def get_disease_variants(disease, file=ExtractedVariants_file):
 def get_tripletSets_with_exTSP(disease, type="all", 
                                     numVars=None, 
                                     brainspan=False,  
-                                    no_P13=True,
+                                    no_P13=False,
                                     by_developmental_period=False, 
-                                    new=False):
+                                    ):
     # type = "all", "P", "PLP", "B", "BLB", "VUS", "case", "control"
     # disease = "ASD", "CM", "PCD", "PKD", "PH", "nonTarget"
     if brainspan:
         if no_P13:
             if by_developmental_period:
-                exTSP_file = exTSP_file_brainspan_by_developmental_period_no_P13
+                exTSP_file = exTSP_file_brainspan_no_P13
             else:
-                exTSP_file = exTSP_file_brainspan_regions_no_P13
+                #exTSP_file = exTSP_file_brainspan_regions_no_P13
+                exTSP_file = exTSP_file_brainspan_no_P13
         else:
             if by_developmental_period:
-                exTSP_file = exTSP_file_brainspan_by_developmental_period
+                exTSP_file = exTSP_file_brainspan
             else:
-                exTSP_file = exTSP_file_brainspan_by_region
+                #exTSP_file = exTSP_file_brainspan_by_region
+                exTSP_file = exTSP_file_brainspan
     else:
-        if not new:
             exTSP_file = exTSP_file_gtex
-        else:
-            exTSP_file = exTSP_file_gtex_new
 
     if not Path(exTSP_file).exists():
         exit("exTSP_file does not exist")
@@ -49,7 +48,7 @@ def get_tripletSets_with_exTSP(disease, type="all",
     if disease in ["CM", "PCD", "PKD", "PH", "nonTarget"]:
         df_vars =  df_vars[["Variant", "ClinicalSignificance"]]
     elif disease == "ASD":
-        df_vars = df_vars[["Variant", "Status", "ClinicalSignificance", "In_ClinVar"]]
+        df_vars = df_vars[["Variant", "Status"]]
     else:
         exit(f"Invalid disease: {disease}")
     type = type.lower()
@@ -65,6 +64,7 @@ def get_tripletSets_with_exTSP(disease, type="all",
             df_vars = df_vars[BLB_idx]
         elif type == "VUS":
             df_vars = df_vars[VUS_idx]  
+        df_vars.rename(columns={"ClinicalSignificance": "ClinVar_annotation"}, inplace=True)
     elif type in ["case", "control"] and disease == "ASD":
         iscase = isCase_ASD(df_vars["Status"])
         if type == "case":
@@ -73,13 +73,13 @@ def get_tripletSets_with_exTSP(disease, type="all",
             df_vars = df_vars[~iscase]
     elif type != "all":
         exit(f"Invalid type {type} for disease {disease}")
-    df_vars.rename(columns={"ClinicalSignificance": "ClinVar_annotation"}, inplace=True)
     df_extsp = df_extsp.merge(df_vars, on="Variant", how="inner")
     if brainspan:
         if by_developmental_period:
             df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Developmental_Period", "Region"])
         else:
-            df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Region"])
+            #df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Region"])
+             df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Developmental_Period", "Region"])
     else:
         df_extsp = df_extsp.drop_duplicates(subset=["Variant", "Transcript_id", "Tissue"])
     if numVars is not None:

@@ -1,4 +1,4 @@
-from ExTSP.config import MutPred2_filtered_file, MutPred2PosteriorTable_file, MutPred2_processed_file
+from ExTSP.config import MutPred2_gtex_file, MutPred2PosteriorTable_file, IsoPath_gtex_file,MutPred2_brainspan_file, IsoPath_brainspan_file
 from ExTSP.config import VariantAnnotations_file, MANE_transcripts_file
 import pandas as pd
 #from Bio import SeqIO
@@ -31,10 +31,10 @@ def add_isoPath_column(df_mp2):
     df_mp2["IsoPath"] = interpolate_from_table(df_mp2["MutPred2"].values, df_mp2_posterior)
     return df_mp2
 
-def main():
-    if not Path(MutPred2_filtered_file).exists():
-        exit("MutPred2_filtered_file does not exist")
-    df_mp2 = pd.read_csv(MutPred2_filtered_file, sep='\t')
+def main(mutPred2_file, isoPath_file):
+    if not Path(mutPred2_file).exists():
+        exit("mutPred2_file does not exist")
+    df_mp2 = pd.read_csv(mutPred2_file, sep='\t')
     df_mp2 = df_mp2[~df_mp2["aa_sub"].isna()]
     df_mp2 = df_mp2[~df_mp2["MutPred2"].isna()]
     assert not df_mp2["Variant"].isna().any(), "Some MutPred2 entires not mapped back to Genomic variants"
@@ -66,12 +66,13 @@ def main():
     df_mp2_isoPath = add_isoPath_column(df_mp2)
     print(f"Number of variants with MP2 Scores: {df_mp2_isoPath.Variant.nunique()}")
     print(f"Number of variant-transcript pairs with MP2 Scores: {len(df_mp2_isoPath)}")
-    df_mp2_isoPath.to_csv(MutPred2_processed_file, sep='\t', index=False)
-    print(f"Saved MutPred2 processed file to {MutPred2_processed_file}")
+    df_mp2_isoPath.to_csv(isoPath_file, sep='\t', index=False)
+    print(f"Saved MutPred2 processed file to {isoPath_file}")
 
 
 if __name__ == "__main__":
-    main()
+    #main(mutPred2_file=MutPred2_gtex_file, isoPath_file=IsoPath_gtex_file)
+    main(mutPred2_file=MutPred2_brainspan_file, isoPath_file=IsoPath_brainspan_file)
     
     
         
